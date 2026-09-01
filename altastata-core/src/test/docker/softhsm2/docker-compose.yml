@@ -1,0 +1,29 @@
+# Docker Compose for SoftHSM2 testing
+#
+# Usage:
+#   docker-compose up -d          # Start container
+#   docker-compose exec softhsm2 init-token.sh   # Initialize token
+#   docker-compose down           # Stop container
+#
+services:
+  softhsm2:
+    build: .
+    container_name: altastata-softhsm2
+    volumes:
+      # Persist tokens across container restarts
+      - softhsm2-tokens:/var/lib/softhsm/tokens
+      # Mount project build directory for running real tests
+      - ../../../../build:/project/build:ro
+      # Mount Gradle cache for dependencies
+      - ~/.gradle/caches:/root/.gradle/caches:ro
+    working_dir: /project
+    environment:
+      - SOFTHSM2_CONF=/etc/softhsm/softhsm2.conf
+      - GRADLE_USER_HOME=/root/.gradle
+    # Keep container running
+    command: tail -f /dev/null
+
+volumes:
+  softhsm2-tokens:
+    name: altastata-softhsm2-tokens
+

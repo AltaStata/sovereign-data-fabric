@@ -1,0 +1,98 @@
+<configuration>
+  <!-- Configure HBase to use AltaStata HDFS as root.
+       HBASE_ROOTDIR comes from docker-compose (.env). -->
+  <property>
+    <name>hbase.rootdir</name>
+    <value>${env.HBASE_ROOTDIR}</value>
+  </property>
+
+  <!-- Cloud FS init (mkdirs / HFiles) can exceed the 200s default after a cold start. -->
+  <property>
+    <name>hbase.master.init.timeout</name>
+    <value>600000</value><!-- 10 minutes -->
+  </property>
+
+  <!-- Decouple WALs from AltaStata for speed! -->
+  <property>
+    <name>hbase.wal.dir</name>
+    <value>file:///tmp/hbase-wals</value>
+  </property>
+  
+  <!-- Provide the FileSystem implementation class -->
+  <property>
+    <name>fs.altastata.impl</name>
+    <value>org.apache.hadoop.fs.altastata.AltaStataHadoopFileSystem</value>
+  </property>
+  
+  <property>
+    <name>hbase.zookeeper.quorum</name>
+    <value>localhost</value>
+  </property>
+  
+  <!-- Standalone mode Zookeeper config -->
+  <property>
+    <name>hbase.cluster.distributed</name>
+    <value>false</value>
+  </property>
+  <property>
+    <name>hbase.zookeeper.property.clientPortAddress</name>
+    <value>0.0.0.0</value>
+  </property>
+  <property>
+    <name>zookeeper.session.timeout</name>
+    <value>180000</value>
+  </property>
+  
+  <!-- Enforce stream capabilities check (AltaStataHadoopOutputStream implements Syncable & StreamCapabilities) -->
+  <property>
+    <name>hbase.unsafe.stream.capability.enforce</name>
+    <value>true</value>
+  </property>
+
+  <!-- Keep writes in MemStore longer; flush less often to AltaStata HFiles -->
+  <property>
+    <name>hbase.hregion.memstore.flush.size</name>
+    <value>268435456</value><!-- 256MB -->
+  </property>
+  <property>
+    <name>hbase.regionserver.global.memstore.size</name>
+    <value>0.4</value>
+  </property>
+  <property>
+    <name>hfile.block.cache.size</name>
+    <value>0.4</value>
+  </property>
+  <property>
+    <name>hbase.client.write.buffer</name>
+    <value>8388608</value><!-- 8MB -->
+  </property>
+  <property>
+    <name>hbase.client.writes.with.durability.async</name>
+    <value>true</value>
+  </property>
+  <!-- Delay periodic MemStore flushes so HFile writes to AltaStata are rarer -->
+  <property>
+    <name>hbase.regionserver.optionalcacheflushinterval</name>
+    <value>3600000</value><!-- 1 hour -->
+  </property>
+  <property>
+    <name>hbase.hregion.majorcompaction</name>
+    <value>0</value><!-- disable timed major compaction in this test stack -->
+  </property>
+
+  <!-- Point AltaStata to the mounted credentials. The account directory is
+       whatever ALTASTATA_ACCOUNT_DIR maps to; the *.user.properties inside it
+       is discovered, so no user or org name is baked into this file. -->
+  <property>
+    <name>altastata.account.home</name>
+    <value>/root/.altastata/admin</value>
+  </property>
+
+  <!-- Passphrase for the private key, from the ALTASTATA_PASSWORD environment
+       variable set in .env. Do not put a literal password here. -->
+  <property>
+    <name>altastata.account.password</name>
+    <value>${env.ALTASTATA_PASSWORD}</value>
+  </property>
+
+</configuration>

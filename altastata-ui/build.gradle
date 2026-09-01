@@ -1,0 +1,283 @@
+plugins {
+    id 'java'
+    id 'org.openjfx.javafxplugin' version '0.1.0'
+    id 'application'
+    id 'org.beryx.runtime' version '1.13.1'
+}
+
+// App / installer version — from the root VERSION file.
+// Same as public git tag without leading "v" (tag v2026.07.16 → 2026.07.16).
+// jpackage rejects a leading "v".
+version = rootProject.file('VERSION').text.trim()
+group = 'com.altastata'
+
+// Task to generate version properties
+task generateVersionProperties {
+    doLast {
+        def versionFile = file('src/main/resources/version.properties')
+        versionFile.parentFile.mkdirs()
+        versionFile.text = """version=${version}
+build.timestamp=${new Date().format('yyyy-MM-dd HH:mm:ss')}
+application.name=AltaStata Cloud File Explorer
+vendor=AltaStata Inc.
+"""
+    }
+}
+
+// Make sure version properties are generated before compilation
+compileJava.dependsOn generateVersionProperties
+
+application {
+    applicationName = 'AltaStataUI'
+    mainClass = 'com.altastata.ui.AltaStataApp'
+}
+
+javafx {
+    version = '17'
+    modules = ['javafx.controls', 'javafx.graphics', 'javafx.media', 'javafx.swing']
+}
+
+sourceSets {
+    main {
+        java {
+            include 'com/altastata/ui/**'
+            include 'com/altastata/controller/**'
+            exclude 'com/altastata/ui/mediaplayer/**'
+        }
+    }
+    test {
+        java {
+            include 'com/altastata/ui/**' // This ensures the test files are also compiled
+            exclude '**.java' // Optionally exclude specific files if needed
+        }
+    }
+}
+
+repositories {
+    mavenLocal()
+    mavenCentral()
+}
+
+dependencies {
+
+    implementation(project(':altastata-core')) {
+        exclude group: 'com.twitter'
+    }
+    implementation "org.apache.tika:tika-core:3.2.2"
+    implementation "org.apache.pdfbox:pdfbox:2.0.32"
+
+    implementation "uk.co.caprica:vlcj:4.7.1"
+    implementation "uk.co.caprica:vlcj-javafx:1.2.0"
+    implementation "net.java.dev.jna:jna:5.12.1"
+
+// TODO: Open to run scala script within Java
+//	compile "org.scala-lang:scala-compiler:2.11.11"
+//	compile "org.scala-lang:scala-reflect:2.11.11"
+}
+
+tasks.withType(JavaExec) {
+    jvmArgs = [
+        '-Xms1g',                    // Initial heap size
+        '-Xmx4g',                    // Max heap size (reduced from 4GB)
+        '-XX:+UseZGC',               // Use ZGC for very low pause times
+        '-XX:+UnlockExperimentalVMOptions',
+        '-XX:+UseStringDeduplication', // Reduce memory usage for strings
+        '-Xlog:gc*:file=gc.log:time,uptime:filecount=5,filesize=10M', // GC logging
+        '-XX:ThreadStackSize=256k',  // Reduce thread stack size
+        '-XX:+DisableExplicitGC',    // Prevent explicit GC calls
+        '-Dfile.encoding=UTF-8',     // Force UTF-8 encoding
+        '-Duser.language=en',        // Set language to English
+        '-Duser.country=US'          // Set country to US
+    ]
+}
+
+def copyJavaFxJars(sourceDir, targetDir, jarPattern) {
+    println "Copying JavaFX jars (e.g., $jarPattern) from $sourceDir to $targetDir"
+
+    copy {
+        from(sourceDir) {
+            include jarPattern
+        }
+        into(targetDir) // This directory will be created if it doesn't exist
+    }
+}
+
+def handleLinuxSpecificTasks(String targetPath, String libPath) {
+    def arch = System.getProperty("os.arch")
+    println("Linux arch $arch")
+
+    def javafx_lib_path = ""
+    def newer_javafx_lib_path = "/usr/lib/jvm/javafx-sdk-25/lib"
+
+    if (arch == "x86_64" || arch == "amd64") {
+        javafx_lib_path = "/usr/lib/jvm/javafx-sdk-17.0.14/lib"
+    } else if (arch == "aarch64") {
+        javafx_lib_path = "/usr/lib/jvm/openjfx"
+    } else {
+        println "Unsupported Linux architecture: $arch"
+        return
+    }
+
+    // Copy JavaFX jars
+    copyJavaFxJars(javafx_lib_path, "$targetPath/javafxlib", '*javafx*.jar')
+
+    // Handle aarch64-specific requirements
+    if (arch == "aarch64") {
+        copy {
+            from(newer_javafx_lib_path) {
+                include '*.so'
+                exclude 'libjfxwebkit.so'
+            }
+            into "$targetPath/$libPath"
+        }
+    }
+
+    // Copy native libraries
+    copy {
+        from(javafx_lib_path) {
+            include '*.so'
+        }
+        into "$targetPath/$libPath"
+    }
+}
+
+runtime {
+    options = ['--strip-debug', '--compress', '2', '--no-header-files', '--no-man-pages']
+
+    // TODO: check what modules are really needed
+    modules = ['java.base', 'java.datatransfer', 'java.desktop', 'java.instrument', 'java.logging', 'java.management',
+               'java.naming', 'java.net.http', 'java.prefs', 'java.security.jgss', 'java.security.sasl', 'java.sql', 'java.transaction.xa',
+               'java.xml', 'jdk.crypto.cryptoki', 'jdk.crypto.ec', 'jdk.httpserver', 'jdk.jfr', 'jdk.jsobject', 'jdk.management',
+               'jdk.net', 'jdk.security.auth', 'jdk.security.jgss', 'jdk.unsupported', 'jdk.unsupported.desktop', 'jdk.xml.dom']
+
+// Uncomment and adjust the code below if you want to generate images for multiple platforms.
+// (You need to also uncomment the line 'targetPlatformName = ...' in the jpackage block.)
+/*
+    targetPlatform("lin") {
+        jdkHome = jdkDownload("https://github.com/AdoptOpenJDK/openjdk15-binaries/releases/download/jdk-15.0.2%2B7/OpenJDK15U-jdk_x64_linux_hotspot_15.0.2_7.tar.gz")
+    }
+
+    targetPlatform("mac") {
+        jdkHome = jdkDownload("https://github.com/AdoptOpenJDK/openjdk15-binaries/releases/download/jdk-15.0.2%2B7/OpenJDK15U-jdk_x64_mac_hotspot_15.0.2_7.tar.gz") {
+            downloadDir = "$buildDir/myMac"
+            archiveName = "my-mac-jdk"
+            archiveExtension = "tar.gz"
+            pathToHome = "jdk-15.0.2+7/Contents/Home"
+            overwrite = true
+        }
+    }
+
+    targetPlatform("win") {
+        jdkHome = jdkDownload("https://github.com/AdoptOpenJDK/openjdk15-binaries/releases/download/jdk-15.0.2%2B7/OpenJDK15U-jdk_x64_windows_hotspot_15.0.2_7.zip")
+    }
+*/
+
+    launcher {
+        noConsole = false
+        jvmArgs = [
+                '--module-path', '{{APP_HOME}}/javafxlib',
+                '--add-modules', 'javafx.controls,javafx.graphics,javafx.media,javafx.swing'
+        ]
+    }
+
+    jpackage {
+        jvmArgs = [
+                '--module-path', '{{BIN_DIR}}/javafxlib',
+                '--add-modules', 'javafx.controls,javafx.graphics,javafx.media,javafx.swing',
+                '-Dfile.encoding=UTF-8',
+                '-Duser.language=en',
+                '-Duser.country=US'
+        ]
+
+        def currentOs = org.gradle.internal.os.OperatingSystem.current()
+        def imgType = currentOs.windows ? 'ico' : currentOs.macOsX ? 'icns' : 'png'
+        // Absolute paths: jpackage CWD is repo root from Git Bash ./gradlew, but
+        // the module dir from gradlew.bat / PowerShell. Relative prefixes break one of them.
+        def iconFile = file("src/main/resources/images/altastata-logo.$imgType")
+        def resourceDir = file("src/main/resources")
+
+        // Windows MSI ProductVersion: major/minor 0-255, build 0-65535.
+        // Date tags like 2026.07.20 exceed that; map to 26.7.20 for jpackage only.
+        // UI still shows the full VERSION via version.properties.
+        def jpackageAppVersion = version.toString()
+        if (currentOs.windows) {
+            def parts = jpackageAppVersion.tokenize('.')
+            if (parts.size() >= 3 && parts[0].isInteger() && parts[0].toInteger() > 255) {
+                jpackageAppVersion = "${parts[0].toInteger() % 100}.${parts[1].toInteger()}.${parts[2].toInteger()}"
+            }
+        }
+
+        imageOptions += ['--icon', iconFile.absolutePath]
+        imageOptions += ['--app-version', jpackageAppVersion]
+        installerOptions += ['--resource-dir', resourceDir.absolutePath]
+        installerOptions += ['--vendor', 'AltaStata Inc.']
+        installerOptions += ['--app-version', jpackageAppVersion]
+        installerOptions += ['--description', 'AltaStata Cloud File Explorer']
+
+        if (currentOs.windows) {
+            installerOptions += ['--win-per-user-install', '--win-dir-chooser', '--win-menu', '--win-shortcut'/*, '--win-console' */]
+        } else if (currentOs.linux) {
+            installerOptions += ['--type', 'rpm', '--linux-package-name', 'AltaStataUI', '--linux-shortcut']
+        } else if (currentOs.macOsX) {
+            installerOptions += ['--mac-package-name', 'AltaStataUI']
+        }
+    }
+
+    tasks.runtime.doLast {
+        def currentOs = org.gradle.internal.os.OperatingSystem.current()
+
+        println "Copying files from src/main/resources to $buildDir/image/lib"
+
+        copy {
+            from('src/main/resources/')
+            into("$buildDir/image/lib")
+        }
+
+        println "Copying files from storage to $buildDir/image"
+
+        copy {
+            from('.') { // Start from the current directory
+                include 'storage/**/*' // This includes all files and subdirectories within storage
+            }
+            into("$buildDir/image")
+        }
+
+        if (currentOs.isMacOsX()) {
+            copyJavaFxJars("$buildDir/image/lib", "$buildDir/image/javafxlib", '*javafx*mac*.jar')
+        } else if (currentOs.isWindows()) {
+            copyJavaFxJars("$buildDir/image/lib", "$buildDir/image/javafxlib", '*javafx*win*.jar')
+        } else if (currentOs.isLinux()) {
+            handleLinuxSpecificTasks("$buildDir/image", "lib")
+        }
+    }
+
+    tasks.jpackage.doFirst {
+        def currentOs = org.gradle.internal.os.OperatingSystem.current()
+        def basePath = currentOs.windows ? project.name : currentOs.linux ? "$project.name/lib" : "${project.name}.app/Contents"
+
+        println "Copying files from src/main/resources to $buildDir/jpackage/$basePath/app"
+
+        copy {
+            from('src/main/resources')
+            into("$buildDir/jpackage/$basePath/app")
+        }
+
+        println "Copying files from storage to $buildDir/jpackage/$basePath"
+
+        copy {
+            from('.') { // Start from the current directory
+                include 'storage/**/*' // This includes all files and subdirectories within storage
+            }
+            into("$buildDir/jpackage/$basePath")
+        }
+
+        if (currentOs.isMacOsX()) {
+            copyJavaFxJars("$buildDir/jpackage/$basePath/app", "$buildDir/jpackage/$basePath/javafxlib", '*javafx*mac*.jar')
+        } else if (currentOs.isWindows()) {
+            copyJavaFxJars("$buildDir/jpackage/$basePath/app", "$buildDir/jpackage/$basePath/javafxlib", '*javafx*win*.jar')
+        }
+        else if (currentOs.isLinux()) {
+            handleLinuxSpecificTasks("$buildDir/jpackage/$basePath", "javafxlib")
+        }
+    }
+}

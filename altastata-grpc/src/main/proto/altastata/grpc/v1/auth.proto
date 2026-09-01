@@ -1,0 +1,72 @@
+/*
+ * Copyright (c) 2026 AltaStata Inc. All rights reserved.
+ *
+ * This software is dual-licensed. It is licensed under the Business Source License 1.1 
+ * (BSL) for open use and evaluation, with an eventual transition to the Apache 2.0 
+ * license on the Change Date.
+ * 
+ * PATENT NOTICE: Protected by US Patent No. 10,693,660.
+ *
+ * For the full license text, see the LICENSE.md file in the root of the repository,
+ * or https://github.com/AltaStata/sovereign-data-fabric/blob/main/LICENSE.md
+ */
+
+syntax = "proto3";
+
+package altastata.v1;
+
+option java_multiple_files = true;
+option java_package = "com.altastata.grpc.proto";
+option java_outer_classname = "AuthProto";
+
+import "google/protobuf/timestamp.proto";
+
+// Application-layer authentication for altastata-grpc.
+//
+// See altastata-grpc/SESSION_AND_EVENTS_DESIGN.md §5.
+//
+// LoginV2 validates account material + password and issues an opaque per-tab
+// session token of the form sess-<base64url> (see CONSOLE_ACCOUNT_SETUP_DESIGN.md §5.2).
+// Subsequent RPCs MUST present the token via "Authorization: Bearer <token>".
+//
+// Sessions have a sliding TTL (default 8 hours, configurable via
+// ALTASTATA_GRPC_SESSION_TTL). Logout invalidates one session immediately;
+// other sessions of the same user are unaffected.
+service AuthService {
+  rpc LoginV2(LoginV2Request) returns (LoginV2Response);
+  rpc Logout(LogoutRequest) returns (LogoutResponse);
+  rpc Refresh(RefreshRequest) returns (RefreshResponse);
+}
+
+message LogoutRequest {}
+message LogoutResponse {}
+
+message RefreshRequest {}
+message RefreshResponse {
+  google.protobuf.Timestamp expires_at = 1;
+}
+
+// Target session entry — see CONSOLE_ACCOUNT_SETUP_DESIGN.md §5.2.
+message LoginV2Request {
+  string client_hint = 1;
+  string password = 2;
+
+  oneof account_source {
+    LoginV2Upload upload = 3;
+    string user_account_directory = 4;
+  }
+}
+
+message LoginV2Upload {
+  // Raw *user.properties text (identity + cloud config).
+  string user_properties = 1;
+  // Account files by basename → content (universal kit). Typical keys:
+  // private.key, license.jwt, org-ca.pem, org-ca-private.key, HPCS/PQC material.
+  // Server materializes these into a temp account dir (RSA included).
+  map<string, bytes> account_files = 2;
+}
+
+message LoginV2Response {
+  string session_token = 1;
+  google.protobuf.Timestamp expires_at = 2;
+}

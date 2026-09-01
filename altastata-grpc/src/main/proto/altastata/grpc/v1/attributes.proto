@@ -1,0 +1,62 @@
+/*
+ * Copyright (c) 2026 AltaStata Inc. All rights reserved.
+ *
+ * This software is dual-licensed. It is licensed under the Business Source License 1.1 
+ * (BSL) for open use and evaluation, with an eventual transition to the Apache 2.0 
+ * license on the Change Date.
+ * 
+ * PATENT NOTICE: Protected by US Patent No. 10,693,660.
+ *
+ * For the full license text, see the LICENSE.md file in the root of the repository,
+ * or https://github.com/AltaStata/sovereign-data-fabric/blob/main/LICENSE.md
+ */
+
+syntax = "proto3";
+
+package altastata.v1;
+import "altastata/grpc/v1/users.proto";
+
+option java_multiple_files = true;
+option java_package = "com.altastata.grpc.proto";
+option java_outer_classname = "AttributesProto";
+
+message Attribute {
+  string name = 1;
+  string value = 2;
+}
+
+message AttributeMap {
+  map<string, string> attributes = 1;
+}
+
+message GetAttributeRequest {
+  string file_path = 1;
+  int64 snapshot_time = 2;
+  string name = 3;
+}
+
+message GetAttributesRequest {
+  string file_path = 1;
+  int64 snapshot_time = 2;
+  repeated string names = 3;
+}
+
+message SetAttributeRequest {
+  string file_path = 1;
+  int64 snapshot_time = 2;
+  string name = 3;
+  string value = 4;
+}
+
+message DeleteAttributeRequest {
+  string file_path = 1;
+  int64 snapshot_time = 2;
+  string name = 3;
+}
+
+service AttributesService {
+  rpc GetAttribute(GetAttributeRequest) returns (Attribute);
+  rpc GetAttributes(GetAttributesRequest) returns (AttributeMap);
+  rpc SetAttribute(SetAttributeRequest) returns (altastata.v1.Empty);
+  rpc DeleteAttribute(DeleteAttributeRequest) returns (altastata.v1.Empty);
+}

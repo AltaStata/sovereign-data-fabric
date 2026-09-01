@@ -1,0 +1,90 @@
+plugins {
+    id 'java-library'
+    id("io.micronaut.library") version "4.5.1"
+    id 'com.google.protobuf' version '0.9.4'
+}
+
+group = 'com.altastata'
+version = rootProject.file('VERSION').text.trim()
+sourceCompatibility = '17'
+
+repositories {
+    mavenCentral()
+    mavenLocal()
+}
+
+sourceSets {
+    main.java.srcDirs = [
+            "src/main/java",
+            "$buildDir/generated/source/proto/main/java",
+            "$buildDir/generated/source/proto/main/grpc"
+    ]
+    main.resources.srcDirs = ["src/main/resources"]
+    main.proto.srcDirs = ["src/main/proto"]
+}
+
+ext {
+    micronautVersion = "4.7.6"
+}
+
+dependencies {
+    implementation(project(':altastata-core')) {
+        exclude group: 'com.twitter'
+    }
+
+    annotationProcessor("io.micronaut:micronaut-http-validation")
+    annotationProcessor("io.micronaut.serde:micronaut-serde-processor")
+
+    implementation("io.micronaut.serde:micronaut-serde-jackson")
+    implementation("io.micronaut.reactor:micronaut-reactor")
+    implementation("io.micronaut.reactor:micronaut-reactor-http-client")
+    implementation("io.micronaut:micronaut-runtime:$micronautVersion")
+    implementation("io.micronaut:micronaut-http-server-netty:$micronautVersion")
+    implementation("io.micronaut:micronaut-http-netty:$micronautVersion")
+    implementation("io.micronaut:micronaut-http-client:$micronautVersion")
+
+    implementation("io.grpc:grpc-netty-shaded:1.75.0")
+    implementation("io.grpc:grpc-protobuf:1.75.0")
+    implementation("io.grpc:grpc-stub:1.75.0")
+    implementation("com.linecorp.armeria:armeria-grpc:1.32.5")
+    compileOnly("javax.annotation:javax.annotation-api:1.3.2")
+
+    runtimeOnly("ch.qos.logback:logback-classic")
+    runtimeOnly("org.yaml:snakeyaml")
+
+    testImplementation 'org.junit.jupiter:junit-jupiter-api:5.8.2'
+    testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.8.2'
+    testImplementation 'org.mockito:mockito-core:4.11.0'
+    testImplementation 'org.mockito:mockito-junit-jupiter:4.11.0'
+    testImplementation 'org.mockito:mockito-inline:4.11.0'
+    testImplementation 'io.grpc:grpc-inprocess:1.69.0'
+}
+
+protobuf {
+    protoc { artifact = "com.google.protobuf:protoc:3.25.1" }
+    plugins { grpc { artifact = "io.grpc:protoc-gen-grpc-java:1.69.0" } }
+    generateProtoTasks {
+        all().configureEach { task -> task.plugins { grpc {} } }
+    }
+}
+
+tasks.named('compileJava').configure { dependsOn tasks.generateProto }
+
+test {
+    useJUnitPlatform()
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(17)
+    }
+}
+
+micronaut {
+    runtime("netty")
+    testRuntime("junit5")
+    processing {
+        incremental(true)
+        annotations("com.altastata.*")
+    }
+}

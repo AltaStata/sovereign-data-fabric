@@ -1,0 +1,60 @@
+plugins {
+    id 'java-library'
+    id("io.micronaut.library") version "4.5.1"
+}
+
+group = 'com.altastata'
+version = rootProject.file('VERSION').text.trim()
+sourceCompatibility = '17'
+
+repositories {
+    mavenCentral()
+    mavenLocal()
+}
+
+ext {
+    micronautVersion = "4.7.6"
+    mcpSdkVersion = "0.11.3"
+}
+
+dependencies {
+    implementation(project(':altastata-core')) {
+        exclude group: 'com.twitter'
+    }
+
+    annotationProcessor("io.micronaut:micronaut-inject-java")
+    annotationProcessor("io.micronaut.serde:micronaut-serde-processor")
+
+    implementation("io.micronaut:micronaut-inject:$micronautVersion")
+    implementation("io.micronaut:micronaut-runtime:$micronautVersion")
+    implementation("io.micronaut.serde:micronaut-serde-jackson")
+
+    // Official Anthropic / MCP Java SDK (stdio + sync server).
+    implementation("io.modelcontextprotocol.sdk:mcp:$mcpSdkVersion")
+
+    implementation 'com.fasterxml.jackson.core:jackson-databind:2.18.8'
+    implementation 'org.slf4j:slf4j-api:2.0.16'
+
+    runtimeOnly("ch.qos.logback:logback-classic")
+    runtimeOnly("org.yaml:snakeyaml")
+
+    testImplementation 'org.junit.jupiter:junit-jupiter-api:5.8.2'
+    testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.8.2'
+}
+
+test {
+    useJUnitPlatform()
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(17)
+    }
+}
+
+micronaut {
+    processing {
+        incremental(true)
+        annotations("com.altastata.*")
+    }
+}

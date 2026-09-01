@@ -1,0 +1,22 @@
+#!/bin/bash
+# Copyright (c) 2026 AltaStata Inc. All rights reserved.
+#
+# This software is dual-licensed. It is licensed under the Business Source License 1.1
+# (BSL) for open use and evaluation, with an eventual transition to the Apache 2.0
+# license on the Change Date.
+#
+# PATENT NOTICE: Protected by US Patent No. 10,693,660.
+#
+# For the full license text, see the LICENSE.md file in the root of the repository,
+# or https://github.com/AltaStata/sovereign-data-fabric/blob/main/LICENSE.md
+
+# Remove AltaStata JARs previously uploaded to DBFS.
+set -euo pipefail
+
+DIR="dbfs:/FileStore/altastata-jars"
+
+databricks fs ls "$DIR" | awk '{print $NF}' | while read -r name; do
+  [[ "$name" == *.jar ]] || continue
+  databricks fs rm "${DIR}/${name}"
+  echo "Deleted: ${name}"
+done

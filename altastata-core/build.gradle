@@ -1,0 +1,361 @@
+plugins {
+    id 'scala'
+    id 'java-library'
+    id 'project-report'
+    id 'com.google.protobuf' version '0.9.4'
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(
+                org.gradle.internal.os.OperatingSystem.current().isWindows() ? 17 : 8
+        )
+    }
+}
+
+tasks.withType(ScalaCompile).configureEach { task ->
+    task.scalaCompileOptions.additionalParameters = ['-release:8']
+    exclude '**/com/altastata/cloud/ibm/Grep11*.java'
+}
+
+// Check if the "noGCP" flag is passed (default: false)
+def noGCP = project.hasProperty('noGCP') || System.getenv('NO_GCP') == 'true'
+
+htmlDependencyReport {
+    projects = project.allprojects
+}
+
+repositories {
+    mavenCentral()
+    maven { url "https://oss.sonatype.org/content/repositories/snapshots/" }
+}
+
+dependencies {
+    api "org.scala-lang:scala-library:2.12.20"
+	api "commons-io:commons-io:2.17.0"
+    api 'org.apache.commons:commons-lang3:3.18.0'
+	api "org.slf4j:slf4j-api:2.0.16"
+    api "ch.qos.logback:logback-classic:1.3.14"
+    api "ch.qos.logback:logback-core:1.3.14"
+
+    //api "org.slf4j:slf4j-simple:2.0.16"
+    api "org.json:json:20240303"
+    
+    api 'com.azure:azure-storage-blob:12.29.0'
+    api 'com.azure:azure-storage-queue:12.24.0'
+
+    if (!noGCP) {
+        api 'com.google.cloud:google-cloud-storage:2.48.1'
+        api 'com.google.cloud:google-cloud-kms:2.56.0'
+        //api 'com.google.cloud:google-cloud-pubsub:1.133.1'
+    }
+
+    api 'software.amazon.awssdk:s3:2.29.39'
+    api 'software.amazon.awssdk:sqs:2.29.39'
+    api 'software.amazon.awssdk:sns:2.29.39'
+    api 'software.amazon.awssdk:sts:2.29.39'
+    api 'software.amazon.awssdk:iam:2.29.39'
+    api 'software.amazon.awssdk:kms:2.29.39'
+    api 'software.amazon.awssdk:cognitoidentityprovider:2.29.39'
+    api 'software.amazon.awssdk:cognitoidentity:2.29.39'
+    api 'software.amazon.awssdk:apache-client:2.29.39'
+
+    // old version due to Databricks conflict
+    api 'io.circe:circe-core_2.12:0.14.0-M1'
+    api 'io.circe:circe-parser_2.12:0.14.0-M1'
+    api 'io.circe:circe-generic_2.12:0.14.0-M1'
+
+	api "org.bouncycastle:bcprov-jdk18on:1.85"
+	api "org.bouncycastle:bcpkix-jdk18on:1.85"
+
+	implementation "com.bettercloud:vault-java-driver:2.0.0"
+
+	// In-process bounded cache (small-file ciphertext, encrypted metadata, encrypted data attributes).
+	// Pinned to 2.9.3: last Caffeine release that supports Java 8 (3.x needs Java 11+ and
+	// altastata-core compiles Scala with -release:8 / Mac+Linux toolchain JDK 8).
+	api 'com.github.ben-manes.caffeine:caffeine:2.9.3'
+
+	// GREP11 (gRPC) for HPCS - Java implementation (no .so)
+	// When GCP is present it already brings grpc-netty-shaded; Gradle resolves to one version (no duplicate). When -PnoGCP we need these for GREP11.
+	api "io.grpc:grpc-netty-shaded:1.75.0"
+	api "io.grpc:grpc-stub:1.75.0"
+	api "io.grpc:grpc-protobuf:1.75.0"
+	api "com.google.protobuf:protobuf-java:4.28.3"
+	implementation "org.yaml:snakeyaml:2.2"
+
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.mockito:mockito-core:4.11.0'
+    testImplementation 'org.scalatest:scalatest_2.12:3.2.19'
+    testImplementation 'org.scalatestplus:junit-4-13_2.12:3.2.2.0' // ScalaTest JUnit runner
+}
+
+protobuf {
+    protoc { artifact = "com.google.protobuf:protoc:3.25.1" }
+    plugins { grpc { artifact = "io.grpc:protoc-gen-grpc-java:1.69.0" } }
+    generateProtoTasks {
+        all().configureEach { task -> task.plugins { grpc {} } }
+    }
+}
+
+sourceSets {
+    main {
+        scala {
+            srcDirs = ['src/main/scala', 'src/main/java']
+
+            // Exclude module-info.java from Scala compilation
+            exclude '**/module-info.java'
+
+            // Exclude all Java files at the following packages
+            exclude '**/com/altastata/cloud/azure/**'
+            exclude '**/com/altastata/cloud/google/GooglePubSub**'
+
+                // Conditionally exclude Google Storage Manager for GraalVM
+            if (noGCP) {
+                exclude '**/com/altastata/cloud/google/*.scala'
+            }
+
+            // TODO: for Android uncomment the following lines
+//            exclude '**/cognito/helper/**'
+//            exclude '**/android/util/**Log*'
+        }
+        // Generated proto/gRPC + GREP11 Java only (compileJava runs first; GREP11 lives in java-hpcs to avoid compiling Scala-dependent Java)
+        java.srcDirs = ["$buildDir/generated/source/proto/main/java", "$buildDir/generated/source/proto/main/grpc", "src/main/java-hpcs"]
+    }
+    if (noGCP) {
+        test {
+            scala {
+                exclude '**/com/altastata/cloud/google/**'
+            }
+        }
+    }
+}
+
+// Ensure proto is generated before compileJava (required after clean when java.srcDirs points at generated dirs)
+tasks.named('compileJava').configure { dependsOn tasks.generateProto }
+
+// Do not run tests as part of build (avoids compileTestJava/test failures). Run tests explicitly with: gradle test
+gradle.taskGraph.whenReady { graph ->
+    if (graph.hasTask(tasks.named('build').get())) {
+        tasks.named('test').configure { enabled = false }
+        tasks.named('compileTestJava').configure { enabled = false }
+    }
+}
+
+/*
+configurations.all {
+    exclude group: 'javax.annotation', module: 'javax.annotation-api'
+
+    // This is same as the next line
+    //exclude group: 'com.google.api.grpc', module: 'proto-google-cloud-storage-v2'
+    exclude group: 'com.google.api.grpc', module: 'gapic-google-cloud-storage-v2'
+
+    exclude group: 'com.google.api.grpc', module: 'proto-google-common-protos'
+
+    exclude group: 'com.google.api.grpc', module: 'grpc-google-cloud-storage-v2'
+
+    // for jLink passed
+    exclude group: 'io.grpc', module: 'grpc-netty-shaded'
+}
+
+// Compile module-info.java
+task compileModuleInfo(type: JavaCompile) {
+    source = file('src/main/java/module-info.java')
+    destinationDir = file("$buildDir/classes/scala/main")
+    classpath = sourceSets.main.compileClasspath
+
+    options.compilerArgs = [
+            '--module-path', (sourceSets.main.output.files + sourceSets.main.compileClasspath.files).join(File.pathSeparator),
+            '--add-modules', 'java.desktop'
+    ]
+}
+
+// Dependencies for tasks
+compileModuleInfo.dependsOn tasks.withType(ScalaCompile)
+tasks.test.dependsOn compileModuleInfo
+tasks.jar.dependsOn compileModuleInfo
+
+// Build task dependencies
+tasks.build {
+    dependsOn tasks.withType(ScalaCompile), compileModuleInfo
+}
+
+java {
+    modularity.inferModulePath = true
+}
+*/
+
+// Add Javadoc configuration
+tasks.withType(Javadoc) {
+    options.encoding = 'UTF-8'
+    options.addStringOption('Xdoclint:none', '-quiet')
+    
+    // Include Scala classes in classpath
+    classpath += files(sourceSets.main.scala.classesDirectory)
+    
+    // Add Scala dependencies to classpath
+    classpath += configurations.compileClasspath
+    
+    // Configure Javadoc to work with Scala
+    options.addStringOption('source', '8')
+    
+    // Set the output directory
+    destinationDir = file("${buildDir}/docs/javadoc")
+    
+    // Public Java surface: high-level API + low-level CloudFile model
+    source = fileTree('src/main/java') {
+        include 'com/altastata/api/**/*.java'
+        include 'com/altastata/filesystem/common/**/*.java'
+    }
+    
+    // Exclude everything else
+    exclude '**/*.scala'
+    exclude '**/com/altastata/demo/**'
+    exclude '**/com/altastata/cloud/**'
+    exclude '**/com/altastata/crypto/**'
+    exclude '**/com/altastata/utils/**'
+}
+
+// Public low-level Scala API only (not internal securecloud handlers).
+// Entry: build/docs/scaladoc/com/altastata/filesystem/securecloud/index.html
+tasks.named('scaladoc') {
+    source = fileTree('src/main/scala') {
+        include 'com/altastata/filesystem/FileSystemModel.scala'
+        include 'com/altastata/filesystem/securecloud/SecureCloudFileSystemModel.scala'
+        include 'com/altastata/filesystem/securecloud/SecureCloudStream.scala'
+    }
+    doLast {
+        def entry = 'com/altastata/filesystem/securecloud/index.html'
+        file("${destinationDir}/index.html").text = """<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="refresh" content="0; url=${entry}">
+  <link rel="canonical" href="${entry}">
+  <title>AltaStata Scala API — securecloud</title>
+</head>
+<body>
+  <p><a href="${entry}">securecloud</a> (FileSystemModel, Streams)</p>
+</body>
+</html>
+"""
+        println "Scaladoc entry: ${destinationDir}/${entry}"
+    }
+}
+
+// Make Javadoc task depend on Scala compilation
+tasks.named('javadoc') {
+    dependsOn 'compileScala'
+    doLast {
+        println "Javadoc generated at: ${destinationDir}"
+    }
+}
+
+// Add this task at the end of the file
+task runIBMCloudObjectStorageDemo(type: JavaExec) {
+    description = 'Run IBM Cloud Object Storage Demo Application'
+    group = 'application'
+    
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.altastata.cloud.ibm.IBMCloudObjectStorageDemo'
+    
+    // Enable console input if needed
+    standardInput = System.in
+}
+
+// Add MinIO demo task
+task runMinIODemo(type: JavaExec) {
+    description = 'Run MinIO Demo Application'
+    group = 'application'
+    
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.altastata.cloud.minio.MinIODemo'
+    
+    // Enable console input if needed
+    standardInput = System.in
+}
+
+// SoftHSM2 Docker test for HPCS development
+task runSoftHSM2Test(type: Exec) {
+    description = 'Run IBMHPCSKeyManager test in Docker'
+    group = 'verification'
+    dependsOn compileTestScala
+    
+    workingDir = file('src/test/docker/softhsm2')
+    commandLine 'bash', 'run-scala-test.sh'
+}
+
+task printTestClasspath {
+    description = 'Print test runtime classpath'
+    group = 'help'
+    doLast {
+        println sourceSets.test.runtimeClasspath.asPath
+    }
+}
+
+task runGrep11CreateKey(type: JavaExec, description: 'Run GREP11 create-key (YAML: -PyamlPath=, save priv blob: -PsavePrivBlob=)') {
+    group = 'application'
+    mainClass = 'com.altastata.cloud.ibm.Grep11CreateKeyMain'
+    classpath = sourceSets.main.runtimeClasspath
+    if (project.hasProperty('yamlPath')) {
+        args project.property('yamlPath').toString()
+    } else {
+        args "${project.projectDir}/grep11client.yaml"
+    }
+    if (project.hasProperty('savePrivBlob')) {
+        args project.property('savePrivBlob').toString()
+    }
+}
+
+task runHPCSCreateKey(type: JavaExec, description: 'Create RSA key in HPCS (GREP11) — default sandbox amazon.rsa.hpcs.hpcsdev') {
+    group = 'application'
+    mainClass = 'com.altastata.cloud.ibm.HPCSCreateKey'
+    classpath = sourceSets.main.runtimeClasspath
+    jvmArgs '--add-opens', 'jdk.crypto.cryptoki/sun.security.pkcs11=ALL-UNNAMED'
+    if (project.hasProperty('accountDir')) {
+        args project.property('accountDir').toString()
+    }
+    if (project.hasProperty('hpcsUser')) {
+        args project.property('hpcsUser').toString()
+    }
+}
+
+task runHPCSGrep11EncryptDecryptSignVerifyTest(type: JavaExec, description: 'Standalone test: encrypt/decrypt and sign/verify with GREP11 key (GREP11_YAML env; arg: account dir)') {
+    group = 'verification'
+    mainClass = 'com.altastata.cloud.ibm.hpcs.HPCSGrep11EncryptDecryptSignVerifyTest'
+    classpath = sourceSets.test.runtimeClasspath
+    if (project.hasProperty('accountDir')) {
+        args project.property('accountDir').toString()
+    }
+}
+
+task runHPCSAltaStataCryptoTest(type: JavaExec, description: 'Standalone test: AltaStata crypto (encryptProperty, getAndDecryptProperty, encryptArrayWithRSA, sign/verify) with HPCS') {
+    group = 'verification'
+    mainClass = 'com.altastata.cloud.ibm.hpcs.HPCSAltaStataCryptoTest'
+    classpath = sourceSets.test.runtimeClasspath
+    if (project.hasProperty('accountDir')) {
+        args project.property('accountDir').toString()
+    }
+}
+
+test {
+    java {
+        // No exclusions needed since CephCILogon files have been deleted
+    }
+
+    // Bulk Azure IT (1100 files × metadata/attrs/chunks) needs more than the default ~512MB heap;
+    // download phase OOM'd without this (see bulk-no-metadata-ui-off.log).
+    maxHeapSize = '4g'
+    // Run ScalaTest tests
+    testLogging {
+        events "passed", "skipped", "failed", "standardOut"
+        showStandardStreams = true
+        exceptionFormat "full"
+    }
+    
+    // Only include actual ScalaTest/JUnit tests (ending in *SimulationTest, *Spec, etc.)
+    // Exclude Scala objects with main() that have "Test" in their name
+    scanForTestClasses = false
+    include '**/*SimulationTest.class'
+    include '**/*Spec.class'
+    include '**/*Tests.class'
+}

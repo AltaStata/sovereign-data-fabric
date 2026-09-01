@@ -1,0 +1,17 @@
+/* Toolbar CSS - Consistent with UITheme styling */
+
+.button {
+    -fx-background-color: transparent;
+    -fx-border-radius: 4px; /* UITheme.BORDER_RADIUS */
+    -fx-background-radius: 4px;
+    -fx-font-family: "Segoe UI", -apple-system, BlinkMacSystemFont, Arial, sans-serif;
+}
+
+.button:hover {
+    -fx-background-color: rgba(0,0,0,.08);
+    -fx-cursor: hand;
+}
+
+.button:armed {
+    -fx-background-color: rgba(0,0,0,.15);
+}

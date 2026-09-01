@@ -1,0 +1,123 @@
+/*
+ * Copyright (c) 2026 AltaStata Inc. All rights reserved.
+ *
+ * This software is dual-licensed. It is licensed under the Business Source License 1.1 
+ * (BSL) for open use and evaluation, with an eventual transition to the Apache 2.0 
+ * license on the Change Date.
+ * 
+ * PATENT NOTICE: Protected by US Patent No. 10,693,660.
+ *
+ * For the full license text, see the LICENSE.md file in the root of the repository,
+ * or https://github.com/AltaStata/sovereign-data-fabric/blob/main/LICENSE.md
+ */
+
+syntax = "proto3";
+
+package altastata.v1;
+
+option java_multiple_files = true;
+option java_package = "com.altastata.grpc.proto";
+option java_outer_classname = "EventsProto";
+
+import "google/protobuf/timestamp.proto";
+
+// =============================================================================
+// Real-time event delivery for altastata-grpc.
+//
+// See altastata-grpc/SESSION_AND_EVENTS_DESIGN.md §7 for the full model.
+//
+// Watch is the only event RPC. Each session (each browser tab / each
+// AuthService.Login) opens exactly one Watch stream after Login. The server
+// delivers a typed Event stream with monotonic per-userName sequence
+// numbers, supports since_sequence-based replay from the in-memory ring
+// buffer, and emits EventGap when the requested cursor is older than the
+// buffer.
+//
+// The pre-EventBus untyped Subscribe RPC was removed once both first-party
+// clients (Console UI and altastata-python-package) had switched to Watch;
+// see SESSION_AND_EVENTS_DESIGN.md §11 (PR-7) for the migration history.
+// =============================================================================
+
+service EventsService {
+  // Per-session real-time event stream. Authenticated via the standard
+  // Authorization: Bearer sess-... header. The userName for fan-out is
+  // resolved server-side from the session token; clients cannot watch
+  // events for another user.
+  rpc Watch(WatchRequest) returns (stream Event);
+}
+
+// ---------- New typed event surface -----------------------------------------
+
+message WatchRequest {
+  // If > 0, the server replays buffered events with sequence > this value
+  // before transitioning to live delivery. Use 0 for "live only", which is
+  // the right choice on the very first Watch after Login.
+  uint64 since_sequence = 1;
+}
+
+// One real-time notification, in publish order, fanned out to every Watch
+// stream open for the recipient userName.
+message Event {
+  // Monotonic per userName, starts at 1, never reused. Clients can persist
+  // the last seen sequence and resume after a network blip via
+  // WatchRequest.since_sequence.
+  uint64 sequence = 1;
+
+  google.protobuf.Timestamp occurred_at = 2;
+
+  // SHA-256 hex of the originating session token, NOT the token itself.
+  // Lets a client suppress UI flicker for self-originated events ("the file
+  // I just deleted in this tab is gone — don't double-toast it") without
+  // leaking another session's identity. Empty for server-originated events
+  // (e.g. EventGap, SessionRevoked).
+  string origin_session_hash = 3;
+
+  // Minimal payload set for what altastata actually surfaces today: the
+  // existing AltaStataEventListener path emits "shared" (someone gave me
+  // access) and "deleted" (semantically "unshared" — someone revoked my
+  // access), plus two gateway control events. Other variants discussed in
+  // SESSION_AND_EVENTS_DESIGN.md §7.1 (FileCreated, FileDeleted, FileModified,
+  // UserGroupChanged) are deferred — there are no producers for them yet,
+  // and self-event multi-tab consistency for "Bob created/deleted in tab 1
+  // → Bob's tabs 2/3 update" is intentionally postponed pending more design
+  // work. Adding a new oneof variant later is a non-breaking change in
+  // proto3, so deferring costs us nothing schema-wise.
+  oneof payload {
+    FileSharedEvent     file_shared     = 10;   // cross-user: someone gave me access
+    FileUnsharedEvent   file_unshared   = 11;   // cross-user: someone revoked my access (today's "deleted")
+
+    SessionRevokedEvent session_revoked = 99;   // gateway control: my session is dead
+    EventGapEvent       event_gap       = 100;  // gateway control: replay buffer overrun
+  }
+}
+
+message FileSharedEvent {
+  string file_id   = 1;
+  string file_path = 2;
+  string shared_by = 3;     // userName of the sharer
+}
+
+message FileUnsharedEvent {
+  string file_id     = 1;
+  string unshared_by = 2;   // userName of the user who revoked access
+}
+
+// Server-originated. Emitted on the affected Watch stream just before it is
+// closed. Tells the client whether to re-Login (LOGOUT / EXPIRED) or surface
+// an admin-revoked message (ADMIN).
+message SessionRevokedEvent {
+  enum Reason {
+    LOGOUT  = 0;
+    EXPIRED = 1;
+    ADMIN   = 2;
+  }
+  Reason reason = 1;
+}
+
+// Server-originated. Sent at the start of replay when the client's
+// since_sequence is older than the oldest event still in the ring buffer.
+// The client's correct response is a full state refresh (e.g. listDir) and
+// then trust live delivery from this point on.
+message EventGapEvent {
+  uint64 server_oldest_sequence = 1;
+}

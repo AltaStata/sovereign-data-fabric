@@ -1,0 +1,29 @@
+<configuration>
+    <!-- Console Appender with Duplicate Filter -->
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <filter class="ch.qos.logback.core.filter.DuplicateMessageFilter">
+            <!-- Cache size for duplicate detection -->
+            <cacheSize>100</cacheSize>
+            <!-- Allow showing the message only once -->
+            <allowedRepetitions>0</allowedRepetitions>
+        </filter>
+        <encoder>
+            <pattern>%cyan(%d{yyyy/MM/dd HH:mm:ss.S}) %highlight(%-5level) %gray([%thread]) %magenta(%-5level %logger) - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <!-- Logger Configuration -->
+    <logger name="com.altastata" level="INFO"/>
+
+    <!-- Set SecureCloudEventProcessor to WARN to reduce frequency -->
+    <logger name="com.altastata.filesystem.securecloud.SecureCloudEventProcessor" level="WARN"/>
+
+    <!-- Third-party Logger Configuration -->
+    <logger name="org.apache.http" level="ERROR"/>
+    <logger name="software.amazon" level="ERROR"/>
+
+    <!-- Root Logger -->
+    <root level="INFO">
+        <appender-ref ref="CONSOLE"/>
+    </root>
+</configuration>

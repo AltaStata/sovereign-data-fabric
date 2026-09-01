@@ -1,0 +1,144 @@
+plugins {
+    id 'java-library'
+    id("io.micronaut.application") version "4.5.1"
+    id("com.gradleup.shadow") version "8.3.6"
+}
+
+group = 'com.altastata'
+version = rootProject.file('VERSION').text.trim()
+sourceCompatibility = '17'
+
+repositories {
+    mavenCentral()
+    mavenLocal()
+}
+
+ext {
+    micronautVersion = "4.7.6"
+}
+
+// BouncyCastle jars are JCE-signed. shadowJar's `exclude 'META-INF/*.SF'`
+// (mandatory to avoid jarsigner conflicts) breaks that signature, after
+// which JCE refuses to authenticate the BC provider at runtime and every
+// PEM decryption — Login, sharing, anything that touches a private key —
+// fails with "Unable to create OpenSSL PBDKF: JCE cannot authenticate the
+// provider BC". Default to keeping BC as external signed jars. Override
+// with -PincludeBouncyCastle=true only for downstream packaging that
+// re-signs the resulting uber jar.
+def excludeBouncyCastle = !(project.hasProperty('includeBouncyCastle') && project.property('includeBouncyCastle') == 'true')
+
+dependencies {
+    implementation(project(':altastata-core')) {
+        exclude group: 'com.twitter'
+    }
+    implementation project(':altastata-grpc')
+    implementation project(':altastata-s3-gateway')
+    implementation project(':altastata-mcp')
+
+    implementation 'net.sf.py4j:py4j:0.10.9.5'
+
+    // Micronaut runtime + HTTP server. Pulled in transitively by the two
+    // service libraries; pin here for clarity.
+    implementation("io.micronaut:micronaut-runtime:$micronautVersion")
+    implementation("io.micronaut:micronaut-http-server-netty:$micronautVersion")
+
+    runtimeOnly("ch.qos.logback:logback-classic")
+    runtimeOnly("org.yaml:snakeyaml")
+}
+
+application {
+    mainClass = "com.altastata.services.AltaStataServicesLauncher"
+}
+
+run {
+    // Pass through system properties from gradle command line, so e.g.
+    //   ./gradlew :altastata-services:run -Daltastata.services.s3gateway.enabled=true
+    // flips the S3 gate without editing application.yml.
+    systemProperties = System.getProperties()
+}
+
+test {
+    useJUnitPlatform()
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(17)
+    }
+}
+
+// Lazy provider for the exact BC jar files we depend on. Used both to
+// copy them next to the uber jar and to wire them into the uber jar's
+// manifest Class-Path. Lazy so that resolution happens during task
+// execution, not during project configuration (which would freeze the
+// runtimeClasspath dependency configuration before all `dependencies`
+// blocks have been processed).
+def bouncyCastleJars = { ->
+    configurations.runtimeClasspath.filter { f ->
+        def n = f.name
+        n.startsWith('bcprov-jdk18on') ||
+                n.startsWith('bcpkix-jdk18on') ||
+                n.startsWith('bcutil-jdk18on')
+    }
+}
+
+// Copy BC jars to build/libs/lib/ next to the uber jar. They stay signed
+// because they are not repackaged. shadowJar references them via the
+// manifest Class-Path entry below. Wipe stale bc*-jdk18on-*.jar first so
+// version bumps (e.g. 1.80 → 1.85) do not leave old jars beside the new ones.
+tasks.register('copyBouncyCastleJars', Copy) {
+    doFirst {
+        def libDir = layout.buildDirectory.dir('libs/lib').get().asFile
+        if (libDir.isDirectory()) {
+            libDir.eachFileMatch(~/bc(prov|pkix|util)-jdk18on-.*\.jar/) { it.delete() }
+        }
+    }
+    from { bouncyCastleJars() }
+    into layout.buildDirectory.dir('libs/lib')
+}
+
+shadowJar {
+    archiveBaseName = 'altastata-services'
+    archiveClassifier = 'uber'
+    zip64 true
+    mergeServiceFiles()
+    exclude 'META-INF/*.SF'
+    exclude 'META-INF/*.DSA'
+    exclude 'META-INF/*.RSA'
+
+    if (excludeBouncyCastle) {
+        dependencies {
+            exclude(dependency('org.bouncycastle:bcprov-jdk18on'))
+            exclude(dependency('org.bouncycastle:bcpkix-jdk18on'))
+            exclude(dependency('org.bouncycastle:bcutil-jdk18on'))
+        }
+        // Make `java -jar altastata-services-<v>-uber.jar` find the external
+        // signed BC jars sitting in build/libs/lib/. Required for JCE to
+        // accept BouncyCastle as an authenticated provider.
+        dependsOn tasks.named('copyBouncyCastleJars')
+        // Lazy provider — runtimeClasspath is fully assembled by the time
+        // shadowJar's `doFirst` runs but not during this configure block.
+        manifest {
+            attributes(
+                    'Class-Path': provider {
+                        bouncyCastleJars().files
+                                .collect { "lib/${it.name}" }
+                                .join(' ')
+                    }
+            )
+        }
+    }
+}
+
+tasks.named("assemble").configure {
+    dependsOn(tasks.named("shadowJar"))
+}
+
+micronaut {
+    runtime("netty")
+    testRuntime("junit5")
+    processing {
+        incremental(true)
+        annotations("com.altastata.*")
+    }
+}

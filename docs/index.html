@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>AltaStata Documentation</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; max-width: 800px; margin: 40px auto; padding: 0 20px; line-height: 1.6; color: #333; }
+    a { color: #0066cc; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .card { border: 1px solid #ddd; border-radius: 8px; padding: 20px; margin-bottom: 20px; }
+    ul { margin: 0.5em 0 0 0; padding-left: 1.2em; }
+  </style>
+</head>
+<body>
+  <h1>AltaStata Documentation</h1>
+  <p>User guides and API reference for the sovereign data fabric (BSL source tree).</p>
+
+  <div class="card">
+    <h2>Downloads</h2>
+    <p>
+      Download the Desktop UI, Admin Tool, and uber JARs from
+      <a href="https://github.com/AltaStata/sovereign-data-fabric/releases">Releases</a>
+      —
+      <a href="https://github.com/AltaStata/sovereign-data-fabric/blob/main/docs/guides/USER_SETUP_GUIDE.md">user account setup</a>,
+      <a href="https://github.com/AltaStata/sovereign-data-fabric/blob/main/docs/guides/ADMIN_TOOL_GUIDE.md">Admin Tool guide</a>,
+      <a href="https://github.com/AltaStata/sovereign-data-fabric/blob/main/docs/guides/UBER_JARS.md">uber JARs</a>.
+    </p>
+  </div>
+
+  <div class="card">
+    <h2>User guides</h2>
+    <ul>
+      <li><a href="guides/USER_SETUP_GUIDE.html">User setup</a> — keys and account folder</li>
+      <li><a href="guides/ADMIN_TOOL_GUIDE.html">Admin Tool</a> — provision storage for your org</li>
+      <li><a href="guides/HOWTO.html">HOWTO</a> — upload, download, share, delete</li>
+      <li><a href="guides/ENTERPRISE.html">Enterprise</a> — Custodian, PQC, CISO / egress</li>
+      <li><a href="guides/UBER_JARS.html">Uber JARs</a> — Spark, Services, S3 gateway</li>
+      <li><a href="guides/DEVELOPERS_GUIDE.html">Developers</a> — build from source</li>
+      <li><a href="guides/Low-level-Scala-API.html">Low-level Scala API</a></li>
+    </ul>
+    <p>Start from the repo <a href="https://github.com/AltaStata/sovereign-data-fabric/blob/main/README.md">README</a> or <a href="https://github.com/AltaStata/sovereign-data-fabric/blob/main/SUPPORT.md">SUPPORT.md</a>.</p>
+  </div>
+
+  <div class="card">
+    <h2><a href="api/javadoc/index.html">Java API Documentation</a></h2>
+    <p>Documentation for the Java SDK APIs, including <code>com.altastata.api</code> and <code>com.altastata.filesystem.common</code> (<code>CloudFile</code>, <code>FileSystemHandler</code>).</p>
+  </div>
+
+  <div class="card">
+    <h2><a href="api/scaladoc/com/altastata/filesystem/securecloud/index.html">Scala API Documentation</a></h2>
+    <p>Low-level <code>FileSystemModel</code>, <code>SecureCloudFileSystemModel</code>, Streams.</p>
+  </div>
+</body>
+</html>

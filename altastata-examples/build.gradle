@@ -1,0 +1,311 @@
+plugins {
+    id 'scala'
+    id 'distribution'
+    id 'java-library'
+    id 'com.gradleup.shadow' version '8.3.6'
+    id 'org.graalvm.buildtools.native' version '0.10.6'
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(17)
+    }
+}
+
+tasks.withType(ScalaCompile) {
+    scalaCompileOptions.additionalParameters = ['-release:8']
+}
+
+repositories {
+    mavenCentral()
+    maven { url "https://oss.sonatype.org/content/repositories/snapshots/" }
+}
+
+// Custom configurations
+configurations {
+    sparkImplementation.extendsFrom implementation
+    streamsImplementation.extendsFrom implementation
+}
+
+sourceSets {
+    main {
+        scala {
+            srcDirs = ["src/main/scala", "src/main/java"]
+        }
+        java {
+            srcDirs = []
+        }
+        resources {
+            srcDirs = ["src/main/resources"]
+        }
+    }
+    spark {
+        scala {
+            srcDirs = ["src/spark/scala", "src/spark/java"]
+        }
+        java {
+            srcDirs = []
+        }
+        resources {
+            srcDirs = ["src/spark/resources"]
+        }
+        compileClasspath += sourceSets.main.output
+        runtimeClasspath += sourceSets.main.output
+    }
+    streams {
+        java {
+            srcDirs = ["src/streams/java"]
+        }
+        resources {
+            srcDirs = ["src/streams/resources"]
+        }
+        compileClasspath += sourceSets.main.output
+        runtimeClasspath += sourceSets.main.output
+    }
+}
+
+dependencies {
+    // Basic examples dependencies
+    implementation(project(':altastata-core')) {
+        exclude group: 'com.twitter'
+        exclude group: 'commons-logging'
+    }
+    implementation "com.sparkjava:spark-core:2.9.4"
+    implementation "com.amazonaws:aws-java-sdk-s3:1.12.353"
+    
+    // For GraalVM basic usage in basic examples (main)
+    implementation 'software.amazon.awssdk:transcribestreaming:2.29.39'
+    implementation 'io.grpc:grpc-netty-shaded:1.75.0'
+    implementation 'io.grpc:grpc-api:1.75.0'
+    implementation 'net.java.dev.jna:jna:5.16.0'
+
+    testImplementation 'junit:junit:4.12'
+
+    // Spark examples dependencies
+    sparkImplementation(project(':altastata-hadoop'))
+    sparkImplementation "org.apache.spark:spark-core_2.12:3.5.0"
+    sparkImplementation "org.apache.spark:spark-sql_2.12:3.5.0"
+    sparkImplementation "org.apache.spark:spark-streaming_2.12:3.5.0"
+
+    // Streams examples dependencies
+    streamsImplementation 'software.amazon.awssdk:transcribestreaming:2.29.39'
+    streamsImplementation 'io.grpc:grpc-netty-shaded:1.75.0'
+    streamsImplementation 'io.grpc:grpc-api:1.75.0'
+    streamsImplementation 'net.java.dev.jna:jna:5.16.0'
+}
+
+jar {
+    manifest {
+        attributes(
+                'Main-Class': 'com.altastata.restapi.spark.VPCRestAPI'
+        )
+    }
+}
+
+task fatJar(type: Jar) {
+    manifest.from jar.manifest
+    from {
+        configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) }
+    } {
+        exclude "META-INF/*.SF"
+        exclude "META-INF/*.DSA"
+        exclude "META-INF/*.RSA"
+    }
+    with jar
+}
+
+def sparkJvmArgs = [
+    '--add-exports=java.base/sun.nio.ch=ALL-UNNAMED',
+    '--add-opens=java.base/java.lang=ALL-UNNAMED',
+    '--add-opens=java.base/java.lang.invoke=ALL-UNNAMED',
+    '--add-opens=java.base/java.lang.reflect=ALL-UNNAMED',
+    '--add-opens=java.base/java.io=ALL-UNNAMED',
+    '--add-opens=java.base/java.net=ALL-UNNAMED',
+    '--add-opens=java.base/java.nio=ALL-UNNAMED',
+    '--add-opens=java.base/java.util=ALL-UNNAMED',
+    '--add-opens=java.base/java.util.concurrent=ALL-UNNAMED',
+    '--add-opens=java.base/java.util.concurrent.atomic=ALL-UNNAMED',
+    '--add-opens=java.base/sun.nio.ch=ALL-UNNAMED',
+    '--add-opens=java.base/sun.nio.cs=ALL-UNNAMED',
+    '--add-opens=java.base/sun.security.action=ALL-UNNAMED',
+    '--add-opens=java.base/sun.util.calendar=ALL-UNNAMED',
+    '--add-opens=java.security.jgss/sun.security.krb5=ALL-UNNAMED'
+]
+
+task runSpark(type: JavaExec) {
+    dependsOn sparkClasses
+    workingDir = rootProject.projectDir
+    if (project.hasProperty("appArgs")) {
+        args = (project.appArgs as String).tokenize()
+    }
+
+    mainClass = 'com.altastata.spark.hadoop.HadoopFSTest'
+    classpath = sourceSets.spark.runtimeClasspath + sourceSets.spark.output
+    jvmArgs = sparkJvmArgs
+}
+
+task runTestSpark(type: JavaExec) {
+    dependsOn sparkClasses
+    workingDir = rootProject.projectDir
+    mainClass = 'TestSpark'
+    classpath = sourceSets.spark.runtimeClasspath + sourceSets.spark.output
+    jvmArgs = [
+        '--add-exports=java.base/sun.nio.ch=ALL-UNNAMED',
+        '--add-opens=java.base/sun.nio.ch=ALL-UNNAMED',
+        '--add-opens=java.base/java.lang=ALL-UNNAMED',
+        '--add-opens=java.base/java.util=ALL-UNNAMED'
+    ]
+}
+
+task runSimpleTest(type: JavaExec) {
+    dependsOn classes
+    workingDir = rootProject.projectDir
+    mainClass = 'com.altastata.api.SimpleTest'
+    classpath = sourceSets.main.runtimeClasspath + sourceSets.main.output
+    args = ['123'] // default bob123 password
+}
+
+// Any main-source example:
+//   ./gradlew :altastata-examples:runExample -PmainClass=com.altastata.api.StoreAndRetrieve -PappArgs='your-password'
+task runExample(type: JavaExec) {
+    dependsOn classes
+    workingDir = rootProject.projectDir
+    mainClass = project.findProperty('mainClass') ?: 'com.altastata.api.SimpleTest'
+    classpath = sourceSets.main.runtimeClasspath + sourceSets.main.output
+    if (project.hasProperty('appArgs')) {
+        args = [project.appArgs as String]
+    }
+    def exampleJvmArgs = []
+    if (project.hasProperty('maxHeap')) {
+        exampleJvmArgs << "-Xmx${project.maxHeap}"
+    }
+    // Pipe-separated extra flags (spaces inside Gradle -P are painful):
+    //   -PextraJvmArgs='-XX:+HeapDumpOnOutOfMemoryError|-Xlog:gc*:file=gc.log:time,uptime'
+    if (project.hasProperty('extraJvmArgs')) {
+        exampleJvmArgs.addAll((project.extraJvmArgs as String).tokenize('|'))
+    }
+    if (!exampleJvmArgs.isEmpty()) {
+        jvmArgs = exampleJvmArgs
+    }
+}
+
+// Any spark-source example:
+//   ./gradlew :altastata-examples:runSparkExample -PmainClass=com.altastata.spark.hadoop.ParquetSQLTest -PappArgs='your-password'
+task runSparkExample(type: JavaExec) {
+    dependsOn sparkClasses
+    workingDir = rootProject.projectDir
+    mainClass = project.findProperty('mainClass') ?: 'com.altastata.spark.hadoop.HadoopFSTest'
+    classpath = sourceSets.spark.runtimeClasspath + sourceSets.spark.output
+    if (project.hasProperty('appArgs')) {
+        args = (project.appArgs as String).tokenize()
+    }
+    jvmArgs = sparkJvmArgs
+}
+
+task runStreamsApp(type: JavaExec) {
+    dependsOn streamsClasses
+    workingDir = rootProject.projectDir
+    mainClass = 'com.altastata.demo.audio.TranscribeStreamingDemoAppPublisher'
+    classpath = sourceSets.streams.runtimeClasspath + sourceSets.streams.output
+}
+
+shadowJar {
+    zip64 true
+    mergeServiceFiles()
+    from sourceSets.spark.output
+    configurations = [project.configurations.sparkRuntimeClasspath]
+}
+
+// GraalVM Native Configuration for streams
+graalvmNative {
+    binaries.all {
+        resources.autodetect()
+    }
+    toolchainDetection = false
+
+    agent {
+        defaultMode = "standard"
+    }
+
+    binaries {
+        main {
+            // Configure to use streams sourceSet
+            classpath = sourceSets.streams.runtimeClasspath + sourceSets.streams.output
+            
+            // Main options
+            imageName = 'TranscribeStreamingDemoAppPublisher'
+            mainClass = 'com.altastata.demo.audio.TranscribeStreamingDemoAppPublisher'
+            debug = true
+            verbose = true
+            fallback = true
+            sharedLibrary = false
+            quickBuild = false
+            richOutput = false
+
+            resources.autodetect()
+
+            def initializeAtBuildTime = [
+                    'org.slf4j.LoggerFactory',
+                    'ch.qos.logback',
+                    'org.slf4j.helpers.NOP_FallbackServiceProvider',
+                    'org.slf4j.helpers.SubstituteServiceProvider',
+                    'org.slf4j.helpers.SubstituteLoggerFactory',
+                    'com.fasterxml.jackson.core.Base64Variant',
+                    'org.slf4j.helpers.NOPLoggerFactory',
+                    'com.fasterxml.jackson.core.Base64Variant$PaddingReadBehaviour',
+                    'org.bouncycastle',
+                    'org.bouncycastle.pqc',
+                    'scala.Symbol',
+                    'scala.runtime.SymbolLiteral'
+            ].join(',')
+
+            def initializeAtRunTime = [
+                    'io.netty',
+                    'io.grpc.netty.shaded.io.netty.channel.ProtocolNegotiators',
+                    'org.bouncycastle.jcajce.provider.drbg.DRBG$Default',
+                    'org.bouncycastle.jcajce.provider.drbg.DRBG$NonceAndIV'
+            ].join(',')
+
+            buildArgs.add('--verbose')
+            buildArgs.add('--add-opens=java.base/java.nio=ALL-UNNAMED')
+            buildArgs.add('--add-opens=java.base/jdk.internal.misc=ALL-UNNAMED')
+            buildArgs.add('--add-opens=java.base/jdk.internal.ref=ALL-UNNAMED')
+            buildArgs.add("--initialize-at-build-time=${initializeAtBuildTime}")
+            buildArgs.add("--initialize-at-run-time=${initializeAtRunTime}")
+
+            buildArgs.add("-Djava.security.properties=${projectDir}/src/streams/resources/java.security")
+            buildArgs.add("-H:+UseServiceLoaderFeature")
+
+            buildArgs.add('-H:ReflectionConfigurationFiles=' + project.projectDir.toString() +
+                    '/src/streams/resources/META-INF/native-image/reflect-config.json')
+
+            buildArgs.add('--no-fallback')
+            buildArgs.add('--enable-sbom')
+            buildArgs.add('-march=native')
+            buildArgs.add('-Ob')
+            buildArgs.add('--enable-all-security-services')
+            buildArgs.add('-Dgraalvm.verbose=true')
+            buildArgs.add("--enable-http")
+            buildArgs.add("--enable-https")
+        }
+    }
+}
+
+distributions {
+    main {
+        contents {
+            into('lib') {
+                from jar
+                from(project.configurations.runtimeClasspath)
+            } 
+        }
+    }
+}
+
+// Disable unused distribution tasks
+tasks.named('distZip').configure {
+    enabled = false
+}
+tasks.named('distTar').configure {
+    enabled = false
+}

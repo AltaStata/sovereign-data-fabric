@@ -1,0 +1,10 @@
+rootProject.name = 'altastata'
+
+include 'altastata-core'
+include 'altastata-grpc'
+include 'altastata-services'
+include 'altastata-s3-gateway'
+include 'altastata-mcp'
+include 'altastata-hadoop'
+include 'altastata-examples'
+include 'altastata-ui'

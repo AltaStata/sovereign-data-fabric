@@ -1,0 +1,27 @@
+module altastata.core {
+    requires scala.library;
+    requires java.desktop;
+    requires org.slf4j;
+    requires org.apache.commons.io;
+    requires org.apache.commons.lang3;
+    requires org.bouncycastle.provider;
+    requires org.bouncycastle.pkix;
+    requires com.azure.storage.blob;
+    requires io.circe.parser;
+    requires io.circe.core;
+    //requires google.cloud.storage;
+    //requires google.http.client.apache.v2;
+    //requires google.http.client.jackson2;
+    //requires google.http.client.gson;
+    //requires com.google.gson;
+    //requires google.cloud.core.http;
+    //requires google.cloud.core;
+
+    exports com.altastata.filesystem;
+    exports com.altastata.filesystem.common;
+    exports com.altastata.filesystem.securecloud;
+    exports com.altastata.utils;
+    exports com.altastata.cloud.amazon_java2;
+    exports com.altastata.crypto;
+    exports com.altastata.api;
+}

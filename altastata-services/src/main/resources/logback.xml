@@ -1,0 +1,46 @@
+<configuration>
+    <!--
+      Merged from altastata-grpc/logback.xml and altastata-s3-gateway/logback.xml.
+
+      Application packages keep INFO so we still see EventsService.Subscribe / Watch,
+      AuthGrpcService Login/Logout, SecureCloudEventProcessor's
+      "New changes for user", "shareEvent", "deleteEvent", "Strange change ...",
+      and "trying to share unexisting file" — the breadcrumbs that prove SHARE
+      events reach connected clients. Same expectation on the S3 path.
+    -->
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{yyyy/MM/dd HH:mm:ss.S} %-5level [%thread] %logger{36} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <timestamp key="timestamp" datePattern="yyyyMMdd"/>
+
+    <appender name="FILE" class="ch.qos.logback.core.FileAppender">
+        <file>${user.home:-.}/.altastata/services/logs/logfile-${timestamp}.log</file>
+        <encoder>
+            <pattern>%d{yyyy/MM/dd HH:mm:ss.S} %-5level [%thread] %logger{36} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <logger name="com.altastata" level="INFO"/>
+
+    <!--
+      SecureCloudFileSystemModel is far chattier than the rest of com.altastata
+      (one ERROR per S3 NoSuchKeyException during catalog reconciliation, plus
+      per-file DEBUGs). Pin it at WARN so real failures still surface but the
+      events log we actually care about does not drown.
+    -->
+    <logger name="com.altastata.filesystem.securecloud.SecureCloudFileSystemModel" level="WARN"/>
+
+    <logger name="org.apache.http" level="ERROR"/>
+    <logger name="software.amazon" level="ERROR"/>
+    <logger name="com.linecorp.armeria" level="WARN"/>
+    <logger name="io.netty" level="WARN"/>
+    <logger name="io.micronaut" level="WARN"/>
+
+    <root level="INFO">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="FILE"/>
+    </root>
+</configuration>

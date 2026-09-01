@@ -1,0 +1,207 @@
+%scala
+
+val userProperties =
+    """
+    AWSAccessKeyId=***
+    AWSSecretKey=***
+    hsmKey=***
+    hsmSignKey=***
+    myuser=catrina777
+    accounttype=amazon-s3-secure
+    region=us-east-1
+    kms-region=us-east-2
+    metadata-encryption=HSM
+    acccontainer-prefix=altastata-myorg321-
+    delete-previous-on-upload=true
+    """
+----------------------------------------------------------------------------------------
+
+%scala
+
+// DEFINE THE HADOOP CLIENT FOR ALTASTATA
+
+val sparkBuilder = org.apache.spark.sql.SparkSession.builder
+    .appName("BritannicaCounter")
+    .master("local[20]") // Run 20 threads for workers so they can work in parallel
+    // Various Params
+    .getOrCreate()
+
+val sparkConf = sparkBuilder.sparkContext.getConf
+sparkConf.set("spark.databricks.isv.product", "AltaStata-FortifiedDataLake")
+
+val hadoopConfig = sparkBuilder.sparkContext.hadoopConfiguration
+hadoopConfig.set("fs.altastata.impl", classOf[org.apache.hadoop.fs.altastata.AltaStataHadoopFileSystem].getName)
+hadoopConfig.set("altastata.account.properties", userProperties)
+
+----------------------------------------------------------------------------------------
+
+%scala
+
+import org.apache.hadoop.fs.{FileSystem, Path}
+import org.apache.hadoop.conf.Configuration
+
+// Set up the Hadoop configuration
+hadoopConfig.set("fs.defaultFS", "altastata://nameNode:9000")
+val fs = FileSystem.get(hadoopConfig)
+
+// Delete the directory or file
+val pathToDelete = new Path("Applications/results")
+if (fs.exists(pathToDelete)) {
+  fs.delete(pathToDelete, true) // 'true' ensures recursive deletion
+  println(s"Deleted path: $pathToDelete")
+} else {
+  println(s"Path not found: $pathToDelete")
+}
+
+// Close the FileSystem
+fs.close()
+
+----------------------------------------------------------------------------------------
+
+%scala
+
+// RUN SCALA SPARK
+
+val tf = sparkBuilder.sparkContext.textFile("altastata:///Applications/britannica.txt", 5)
+
+val counts = tf.flatMap(_.split(" "))
+    .map(word => (word, 1))
+    .reduceByKey(_ + _)
+
+println("# words.count " + counts.count + "  words: " + counts.take(10).mkString(", ") + ", ...")
+
+counts.saveAsTextFile("altastata:///Applications/results/counts")
+
+----------------------------------------------------------------------------------------
+
+%scala
+
+// CREATE THE "Applications/results/README.txt" using the HDFS ALTSATATA
+
+import org.apache.commons.io.IOUtils
+import org.apache.hadoop.fs.{FileSystem, LocalFileSystem, LocatedFileStatus, Path, RemoteIterator}
+
+hadoopConfig.set("fs.defaultFS", "altastata://nameNode:9000")
+val fs = FileSystem.get(hadoopConfig)
+
+val os = fs.create(new Path("Applications/results/README.txt"))
+os.write("Counts directory contains the results files".getBytes)
+os.close
+
+fs.close()
+
+
+----------------------------------------------------------------------------------------
+
+
+
+%scala
+
+// SHARING THE FILE WITH USER bob123
+
+import com.altastata.utils.Account
+import scala.collection.JavaConverters._
+import scala.collection.mutable.ListBuffer
+import com.altastata.api.AltaStataFileSystem
+
+Account.loadAccountProperties(userProperties, null)
+
+val afs = new AltaStataFileSystem()
+
+val status = afs.share("Applications/results", true, null, null, Array("bob123"))
+
+print(status)
+
+
+----------------------------------------------------------------------------------------
+
+
+
+%python
+text_file = sc.textFile("altastata:///Applications/britannica.txt", 5)
+
+counts = text_file.flatMap(lambda line: line.split(" ")) \
+                            .map(lambda word: (word, 1)) \
+                           .reduceByKey(lambda x, y: x + y)
+
+print(counts.count())
+
+ll = counts.take(10)
+
+for x in range(len(ll)):
+    print (str(ll[x]), " ")
+
+
+--------------------------- Show the first letters counters ----------------------------
+%scala
+
+// RUN SCALA SPARK
+
+val textFile = sparkBuilder.sparkContext.textFile("altastata:///Applications/britannica.txt", 10)
+
+// Split the lines into words and filter out empty words
+val words = textFile.flatMap(line => line.split("\\W+")).filter(_.nonEmpty)
+
+// Extract the starting letter of each word and convert to lowercase
+val wordsWithLetters = words.map(word => word.toLowerCase.charAt(0).toString)
+
+// Convert to DataFrame and group by letter
+import spark.implicits._
+val letterCounts = wordsWithLetters.toDF("letter")
+  .groupBy("letter")
+  .count()
+  .orderBy("letter")
+
+letterCounts.createOrReplaceTempView("firstLetters")
+
+// Show the resulting DataFrame
+//letterCounts.show()
+
+------------------ Show the table (click '+' to show it as pie chart) --------------------
+
+%sql
+
+SELECT letter, count from firstLetters
+
+----------------------------------------------------------------------------------------
+
+%scala
+
+import java.nio.ByteBuffer
+import com.altastata.filesystem.common.CloudFile
+import com.altastata.filesystem.securecloud.DataSizeAttribute
+import io.circe.Decoder
+
+val list = Account.fileSystemModel.listCloudFiles("", true)
+//list.asScala.foreach(file => println(s"\tList: $file"))
+
+val lastFile: CloudFile = list.asScala.toList.last
+
+println("lastFile: " + lastFile + " versions: " + lastFile.getVersions.size)
+val version = lastFile.getVersions.last
+
+println("version: " + version)
+
+/*
+var toRetrieve = List(lastFile)
+
+val outputDir = "tmp/"
+val timestampFilter = List[java.lang.Long](System.currentTimeMillis)
+
+print("toRetrieve: " + toRetrieve + " outputDir: " + outputDir + " timestampFilter: " + timestampFilter)
+
+val retrieveResults = Account.fileSystemModel.retrieveCloudFilesToLocalDirectory(toRetrieve.toArray, outputDir, timestampFilter.asJava)
+
+println("retrieveResults: " + retrieveResults)
+*/
+
+val size = version.getVersionDataAttribute("size").asInstanceOf[DataSizeAttribute].fileSize.toInt
+
+val buffer = ByteBuffer.allocate(size)
+
+// read the file to the buffer
+val status = Account.fileSystemModel.retrieveCloudFileToByteBuffer(buffer, lastFile, List(version.getCreateTime).map(java.lang.Long.valueOf).asJava, 0L, null)
+
+println(status)
+
+println("BUFFER\n\n" + new String(buffer.array(), "ASCII"))

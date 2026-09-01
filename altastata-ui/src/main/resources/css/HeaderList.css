@@ -1,0 +1,27 @@
+/* 
+    HeaderList CSS - Modern styling for AltaStata file lists
+    Updated to work with UITheme constants for consistent theming
+*/
+
+.header-list {
+    -fx-font-family: "Segoe UI", -apple-system, BlinkMacSystemFont, Arial, sans-serif;
+}
+
+.list-cell:filled:selected:focused, .list-cell:filled:selected {
+    -fx-background-color: #3498DB; /* UITheme.SECONDARY */
+    -fx-text-fill: white;
+}
+
+.list-cell:hover {
+    -fx-background-color: #F8F9FA; /* UITheme.LIGHT_GRAY */
+    -fx-text-fill: #2C3E50; /* UITheme.PRIMARY - dark text for visibility */
+}
+
+/* hide horizontal scroll bar http://stackoverflow.com/questions/12670137/how-to-hide-the-horizontal-scrollbar-of-a-listview-in-javafx
+.list-view .scroll-bar:horizontal .increment-arrow,
+.list-view .scroll-bar:horizontal .decrement-arrow,
+.list-view .scroll-bar:horizontal .increment-button,
+.list-view .scroll-bar:horizontal .decrement-button {
+    -fx-padding:0;
+}
+*/

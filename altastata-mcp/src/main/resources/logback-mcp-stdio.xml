@@ -1,0 +1,30 @@
+<configuration>
+    <!-- Stdio MCP: never write logs to stdout (JSON-RPC wire). -->
+    <appender name="STDERR" class="ch.qos.logback.core.ConsoleAppender">
+        <target>System.err</target>
+        <encoder>
+            <pattern>%d{yyyy/MM/dd HH:mm:ss.S} %-5level [%thread] %logger{36} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <timestamp key="timestamp" datePattern="yyyyMMdd"/>
+    <appender name="FILE" class="ch.qos.logback.core.FileAppender">
+        <file>${user.home:-.}/.altastata/services/logs/mcp-stdio-${timestamp}.log</file>
+        <encoder>
+            <pattern>%d{yyyy/MM/dd HH:mm:ss.S} %-5level [%thread] %logger{36} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <logger name="com.altastata" level="INFO"/>
+    <logger name="com.altastata.filesystem.securecloud.SecureTemplateFileSystemModel" level="WARN"/>
+    <logger name="com.altastata.filesystem.securecloud.SecureCloudFileSystemModel" level="WARN"/>
+    <logger name="io.micronaut" level="WARN"/>
+    <logger name="io.netty" level="WARN"/>
+    <logger name="org.apache.http" level="ERROR"/>
+    <logger name="software.amazon" level="ERROR"/>
+
+    <root level="INFO">
+        <appender-ref ref="STDERR"/>
+        <appender-ref ref="FILE"/>
+    </root>
+</configuration>

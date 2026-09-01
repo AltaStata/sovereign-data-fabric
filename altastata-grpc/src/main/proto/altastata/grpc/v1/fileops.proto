@@ -1,0 +1,193 @@
+/*
+ * Copyright (c) 2026 AltaStata Inc. All rights reserved.
+ *
+ * This software is dual-licensed. It is licensed under the Business Source License 1.1 
+ * (BSL) for open use and evaluation, with an eventual transition to the Apache 2.0 
+ * license on the Change Date.
+ * 
+ * PATENT NOTICE: Protected by US Patent No. 10,693,660.
+ *
+ * For the full license text, see the LICENSE.md file in the root of the repository,
+ * or https://github.com/AltaStata/sovereign-data-fabric/blob/main/LICENSE.md
+ */
+
+syntax = "proto3";
+
+package altastata.v1;
+
+option java_multiple_files = true;
+option java_package = "com.altastata.grpc.proto";
+option java_outer_classname = "FileOpsProto";
+
+import "altastata/grpc/v1/sharing.proto";
+
+message CreateFileRequest {
+  string file_path = 1;
+  bytes content = 2;
+}
+
+message CreateFileResponse {
+  FileStatus status = 1;
+}
+
+message GetBufferRequest {
+  string file_path = 1;
+  int64 snapshot_time = 2;
+  int64 start_position = 3;
+  int32 parallel_chunks = 4;
+  int32 size = 5;
+  // When true, the file content is declared immutable (write-once): trust the cached `size`
+  // and skip the per-read fresh cloud GET of the size attribute. Default false (always fresh).
+  bool trust_cached_size = 6;
+}
+
+message GetBufferResponse {
+  bytes data = 1;
+}
+
+message DeleteRequest {
+  string cloud_path_prefix = 1;
+  bool including_subdirectories = 2;
+  string time_interval_start = 3;
+  string time_interval_end = 4;
+}
+
+message DeleteByPathsRequest {
+  repeated string file_paths = 1;
+  string time_interval_start = 2;
+  string time_interval_end = 3;
+}
+
+message DeleteResponse {
+  repeated FileStatus statuses = 1;
+}
+
+message ListVersionsRequest {
+  string cloud_path_prefix = 1;
+  bool including_subdirectories = 2;
+  string time_interval_start = 3;
+  string time_interval_end = 4;
+}
+
+message VersionEntry {
+  repeated string versions = 1;
+}
+
+message AppendBufferToFileRequest {
+  string file_path = 1;
+  int64 snapshot_time = 2;
+  bytes content = 3;
+}
+
+message AppendBufferToFileResponse {
+  bool success = 1;
+}
+
+message StoreRequest {
+  repeated string local_files_or_directories = 1;
+  string local_fs_prefix = 2;
+  string cloud_path_prefix = 3;
+  bool wait_until_done = 4;
+}
+
+message StoreResponse {
+  repeated FileStatus statuses = 1;
+}
+
+message RetrieveRequest {
+  string output_dir = 1;
+  string cloud_path_prefix = 2;
+  bool including_subdirectories = 3;
+  int64 snapshot_time = 4;
+  bool is_streaming = 5;
+  bool wait_until_done = 6;
+}
+
+message RetrieveResponse {
+  repeated FileStatus statuses = 1;
+}
+
+message CopyFileRequest {
+  string from_cloud_file_path = 1;
+  string to_cloud_file_path = 2;
+}
+
+message CopyFileResponse {
+  FileStatus status = 1;
+}
+
+message ReadStreamRequest {
+  string file_path = 1;
+  int64 snapshot_time = 2;
+  int64 start_position = 3;
+  int32 parallel_chunks = 4;
+  int32 chunk_size = 5;
+  // See GetBufferRequest.trust_cached_size. Default false (always fresh).
+  bool trust_cached_size = 6;
+}
+
+message ReadStreamChunk {
+  bytes data = 1;
+}
+
+message DownloadDirectoryAsZipRequest {
+  string cloud_path_prefix = 1;
+}
+
+message DownloadDirectoryAsZipChunk {
+  bytes data = 1;
+}
+
+message BeginUploadRequest {
+  string cloud_path = 1;
+  int64 total_size = 2;
+}
+
+message BeginUploadResponse {
+  string upload_id = 1;
+  int32 chunk_size = 2;
+}
+
+message UploadChunkRequest {
+  string upload_id = 1;
+  int64 offset = 2;
+  bytes data = 3;
+}
+
+message UploadChunkResponse {
+  int64 bytes_received = 1;
+}
+
+message CompleteUploadRequest {
+  string upload_id = 1;
+}
+
+message CompleteUploadResponse {
+  FileStatus status = 1;
+}
+
+message AbortUploadRequest {
+  string upload_id = 1;
+}
+
+message AbortUploadResponse {
+  bool aborted = 1;
+}
+
+service FileOpsService {
+  rpc CreateFile(CreateFileRequest) returns (CreateFileResponse);
+  rpc GetBuffer(GetBufferRequest) returns (GetBufferResponse);
+  rpc Delete(DeleteRequest) returns (DeleteResponse);
+  rpc DeleteByPaths(DeleteByPathsRequest) returns (DeleteResponse);
+  rpc ListVersions(ListVersionsRequest) returns (stream VersionEntry);
+  rpc AppendBufferToFile(AppendBufferToFileRequest) returns (AppendBufferToFileResponse);
+  rpc Store(StoreRequest) returns (StoreResponse);
+  rpc Retrieve(RetrieveRequest) returns (RetrieveResponse);
+  rpc CopyFile(CopyFileRequest) returns (CopyFileResponse);
+  rpc ReadStream(ReadStreamRequest) returns (stream ReadStreamChunk);
+  rpc DownloadDirectoryAsZip(DownloadDirectoryAsZipRequest) returns (stream DownloadDirectoryAsZipChunk);
+  rpc BeginUpload(BeginUploadRequest) returns (BeginUploadResponse);
+  rpc UploadChunk(UploadChunkRequest) returns (UploadChunkResponse);
+  rpc CompleteUpload(CompleteUploadRequest) returns (CompleteUploadResponse);
+  rpc AbortUpload(AbortUploadRequest) returns (AbortUploadResponse);
+}

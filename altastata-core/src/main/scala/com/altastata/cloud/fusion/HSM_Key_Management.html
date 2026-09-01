@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AltaStata: HSM Key Management with IBM Hyper Protect</title>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 40px 20px;
+            background: #f5f5f5;
+            color: #333;
+        }
+        h1 {
+            color: #1a237e;
+            border-bottom: 3px solid #1a237e;
+            padding-bottom: 10px;
+        }
+        h2 {
+            color: #303f9f;
+            margin-top: 50px;
+            border-left: 4px solid #303f9f;
+            padding-left: 15px;
+        }
+        h3 {
+            color: #3949ab;
+        }
+        .diagram-container {
+            background: white;
+            border-radius: 10px;
+            padding: 30px;
+            margin: 20px 0;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .mermaid {
+            display: flex;
+            justify-content: center;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            background: white;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        th, td {
+            padding: 12px 15px;
+            text-align: left;
+            border-bottom: 1px solid #eee;
+        }
+        th {
+            background: #1a237e;
+            color: white;
+        }
+        tr:nth-child(even) {
+            background: #f8f9fa;
+        }
+        .box {
+            background: #e3f2fd;
+            border-left: 4px solid #1976d2;
+            padding: 15px 20px;
+            margin: 15px 0;
+            border-radius: 0 8px 8px 0;
+        }
+        .success {
+            background: #e8f5e9;
+            border-left: 4px solid #4caf50;
+        }
+        .warning {
+            background: #fff3e0;
+            border-left: 4px solid #ff9800;
+        }
+        pre {
+            background: #263238;
+            color: #aed581;
+            padding: 20px;
+            border-radius: 8px;
+            overflow-x: auto;
+            font-size: 14px;
+        }
+        code {
+            background: #e8e8e8;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'Consolas', 'Monaco', monospace;
+        }
+        .page-break {
+            page-break-before: always;
+        }
+        @media print {
+            body {
+                background: white;
+                padding: 20px;
+            }
+            .diagram-container {
+                box-shadow: none;
+                border: 1px solid #ddd;
+            }
+            h2 {
+                page-break-before: always;
+            }
+            h2:first-of-type {
+                page-break-before: avoid;
+            }
+        }
+    </style>
+</head>
+<body>
+    <h1>🔐 AltaStata: HSM Key Management with IBM Hyper Protect</h1>
+    
+    <h2>Overview</h2>
+    
+    <p>Two deployment options for protecting Bob's <strong>User Private Key</strong> (RSA-4096):</p>
+
+    <table>
+        <tr>
+            <th>Option</th>
+            <th>Key Location</th>
+            <th>Protection</th>
+            <th>FIPS 140-2 L4</th>
+        </tr>
+        <tr>
+            <td><strong>HPVS</strong></td>
+            <td>Secure Enclave (encrypted memory)</td>
+            <td>Confidential Computing</td>
+            <td>❌ No</td>
+        </tr>
+        <tr>
+            <td><strong>HSM</strong></td>
+            <td>HPCS or CEX hardware</td>
+            <td>Hardware Security Module</td>
+            <td>✅ Yes</td>
+        </tr>
+    </table>
+
+    <p>Alice uses <strong>Bob's Public Key</strong> (from AltaStata PKI) to wrap data encryption keys.</p>
+
+    <hr>
+
+    <h2>🖥️ OPTION 1: HPVS (Secure Enclave)</h2>
+
+    <div class="box">
+        <strong>HPVS - Confidential Computing (Both Parties):</strong>
+        <p>Both <strong>Alice</strong> and <strong>Bob</strong> run in their own HPVS instances on LinuxONE:</p>
+        <ul>
+            <li><strong>Alice's HPVS:</strong> Encrypts data, uses Bob's Public Key from PKI</li>
+            <li><strong>Bob's HPVS:</strong> Decrypts data, has Private Key (password-protected)</li>
+        </ul>
+        <p>✅ IBM cannot access either (Confidential Computing)<br>
+        ✅ Private Key in Bob's encrypted memory<br>
+        ❌ Not FIPS 140-2 Level 4 (no HSM hardware)</p>
+    </div>
+
+    <h3>HPVS Architecture</h3>
+
+    <pre>
+┌──────────────────────────────────────────────────────────────────────────┐
+│                        HPVS KEY HIERARCHY                                │
+│                                                                          │
+│  ┌─────────────────────────────────────────────────────────────────────┐ │
+│  │                     BOB'S RSA KEY PAIR                              │ │
+│  │                                                                      │ │
+│  │   ┌─────────────────────┐       ┌─────────────────────┐            │ │
+│  │   │  Bob's Public Key   │       │  User Private Key   │            │ │
+│  │   │    (RSA-4096)       │       │  (RSA-4096 + pwd)   │            │ │
+│  │   └──────────┬──────────┘       └──────────┬──────────┘            │ │
+│  │              │                             │                        │ │
+│  │              ▼                             ▼                        │ │
+│  │   ┌─────────────────────┐       ┌─────────────────────┐            │ │
+│  │   │  AltaStata PKI      │       │  Bob's HPVS         │            │ │
+│  │   │  (Shared with Alice)│       │  (LinuxONE -        │            │ │
+│  │   │                     │       │   encrypted memory) │            │ │
+│  │   └─────────────────────┘       └─────────────────────┘            │ │
+│  └─────────────────────────────────────────────────────────────────────┘ │
+│                                                                          │
+│  DEK (AES-256) ──► Wrapped by Public Key ──► Stored with Data           │
+│                                                                          │
+│  Alice runs in her own HPVS (LinuxONE) - gets Public Key from PKI       │
+└──────────────────────────────────────────────────────────────────────────┘
+    </pre>
+
+    <h3>HPVS Encryption Flow</h3>
+
+    <div class="diagram-container">
+        <div class="mermaid">
+sequenceDiagram
+    autonumber
+    participant AliceHPVS as Alice's HPVS (LinuxONE)
+    participant PKI as AltaStata PKI
+    participant DataLake as Data Lake
+    participant BobHPVS as Bob's HPVS (LinuxONE)
+
+    Note over AliceHPVS,BobHPVS: 🔐 HPVS RSA (Both in Secure Enclaves)
+
+    rect rgb(240, 240, 240)
+    Note over BobHPVS: Setup (One-Time)
+    BobHPVS->>BobHPVS: Generate RSA-4096 key pair
+    BobHPVS->>BobHPVS: Store Private Key (password-protected)
+    BobHPVS->>PKI: Publish Public Key
+    end
+
+    rect rgb(200, 230, 255)
+    Note over AliceHPVS: Alice Encrypts (in her HPVS)
+    AliceHPVS->>PKI: Get Bob's Public Key
+    AliceHPVS->>AliceHPVS: Generate DEK (AES-256)
+    AliceHPVS->>AliceHPVS: Encrypt Data with DEK → Ciphertext
+    AliceHPVS->>DataLake: Store Ciphertext (encrypted data)
+    AliceHPVS->>AliceHPVS: Wrap DEK with Bob's Public Key
+    AliceHPVS->>DataLake: Store WrappedDEK + timestamp
+    end
+
+    rect rgb(200, 255, 200)
+    Note over BobHPVS: Bob Decrypts (in his HPVS)
+    BobHPVS->>DataLake: Retrieve WrappedDEK + timestamp
+    BobHPVS->>DataLake: Retrieve Ciphertext (encrypted data)
+    BobHPVS->>BobHPVS: Enter password, Unwrap DEK
+    Note right of BobHPVS: Private Key in encrypted memory
+    BobHPVS->>BobHPVS: Decrypt Ciphertext with DEK → Data
+    end
+        </div>
+    </div>
+
+    <h3>HPVS Key Rotation</h3>
+
+    <div class="box">
+        Key rotation should be implemented to support multiple versions of Bob's Private Key:
+        <ul>
+            <li><strong>New encryptions:</strong> Alice uses the latest Public Key (v2, v3, etc.)</li>
+            <li><strong>Old data:</strong> Bob keeps old Private Keys (v1, v2) to decrypt historical data</li>
+            <li><strong>Key selection:</strong> Based on file timestamp - use the appropriate Private Key for that time period, or try previous version if current fails</li>
+        </ul>
+    </div>
+
+    <hr>
+
+    <h2>🔐 OPTION 2: HSM (HPCS or CEX)</h2>
+
+    <div class="box success">
+        <strong>HSM-Generated RSA Key Management:</strong>
+        <ul>
+            <li>Bob generates RSA-4096 key pair <strong>IN the HSM</strong></li>
+            <li>Public Key: Extracted/exported → Published to AltaStata PKI</li>
+            <li>Private Key: <strong>NEVER leaves the HSM</strong></li>
+            <li>Alice wraps DEK with Bob's Public Key (local, fast)</li>
+            <li>Bob unwraps DEK with Private Key <strong>INSIDE HSM</strong></li>
+        </ul>
+        <p>✅ IBM cannot access (private key never leaves HSM)<br>
+        ✅ FIPS 140-2 Level 4 certified<br>
+        ✅ Public key freely distributed, private key hardware-protected</p>
+    </div>
+
+    <h3>HSM Architecture</h3>
+
+    <pre>
+┌──────────────────────────────────────────────────────────────────────────┐
+│                        HSM KEY HIERARCHY                                 │
+│                                                                          │
+│  ┌─────────────────────────────────────────────────────────────────────┐ │
+│  │                     BOB'S RSA KEY PAIR                              │ │
+│  │                                                                      │ │
+│  │   ┌─────────────────────┐       ┌─────────────────────┐            │ │
+│  │   │  Bob's Public Key   │       │  User Private Key   │            │ │
+│  │   │    (RSA-4096)       │       │    (RSA-4096)       │            │ │
+│  │   └──────────┬──────────┘       └──────────┬──────────┘            │ │
+│  │              │ EXTRACTED                   │ NEVER LEAVES           │ │
+│  │              ▼                             ▼                        │ │
+│  │   ┌─────────────────────┐       ┌─────────────────────┐            │ │
+│  │   │  AltaStata PKI      │       │  HSM (HPCS or CEX)  │            │ │
+│  │   │  (Shared with Alice)│       │  (Operations run    │            │ │
+│  │   │  Freely distributed │       │   INSIDE the HSM)   │            │ │
+│  │   └─────────────────────┘       └─────────────────────┘            │ │
+│  └─────────────────────────────────────────────────────────────────────┘ │
+│                                                                          │
+│  DEK (AES-256) ──► Wrapped by Public Key ──► Stored with Data          │
+│  Metadata ──► Encrypted with AES-GCM using DEK                          │
+└──────────────────────────────────────────────────────────────────────────┘
+    </pre>
+
+    <h3>HSM Key Generation & Export</h3>
+
+    <pre>
+┌─────────────────────────────────────────────────────────────────────────┐
+│  KEY GENERATION INSIDE HSM                                              │
+│                                                                         │
+│  ┌─────────────────────────────────────────────────────────────────┐   │
+│  │  HSM (HPCS or CEX)                                              │   │
+│  │                                                                  │   │
+│  │  1. GenerateKeyPair(RSA-4096)                                   │   │
+│  │       ↓                                                          │   │
+│  │  ┌──────────────────┐    ┌──────────────────┐                   │   │
+│  │  │  Public Key      │    │  Private Key     │                   │   │
+│  │  │  (can extract)   │    │  (handle only)   │                   │   │
+│  │  └────────┬─────────┘    └────────┬─────────┘                   │   │
+│  │           │                       │                              │   │
+│  │           ▼                       ▼                              │   │
+│  │     EXPORT to PKI           STAYS IN HSM                        │   │
+│  └─────────────────────────────────────────────────────────────────┘   │
+│                                                                         │
+│  Private key operations (decrypt, sign) execute INSIDE the HSM         │
+└─────────────────────────────────────────────────────────────────────────┘
+    </pre>
+
+    <h3>HSM Encryption Flow</h3>
+
+    <div class="diagram-container">
+        <div class="mermaid">
+sequenceDiagram
+    autonumber
+    participant Bob as Bob
+    participant HSM as HSM (HPCS/CEX)
+    participant PKI as AltaStata PKI
+    participant Alice as Alice
+    participant DataLake as Data Lake
+
+    Note over Bob,Alice: 🔐 HSM RSA ENCRYPTION (Private Key Never Leaves)
+
+    rect rgb(240, 240, 240)
+    Note over Bob,PKI: Setup (One-Time)
+    Bob->>HSM: Generate RSA-4096 key pair INSIDE HSM
+    HSM-->>Bob: Public Key (extracted)
+    Note right of HSM: Private Key stays in HSM
+    Bob->>PKI: Publish Public Key
+    end
+
+    rect rgb(200, 230, 255)
+    Note over Alice: Alice Encrypts
+    Alice->>PKI: Get Bob's Public Key
+    Alice->>Alice: Generate DEK (AES-256)
+    Alice->>Alice: Encrypt Data with DEK (AES-GCM)
+    Alice->>Alice: Wrap DEK with Bob's Public Key
+    Alice->>DataLake: Store Ciphertext + Wrapped DEK
+    end
+
+    rect rgb(200, 255, 200)
+    Note over Bob: Bob Decrypts (Private Key in HSM)
+    Bob->>DataLake: Retrieve Wrapped DEK + Ciphertext
+    Bob->>HSM: Unwrap DEK with Private Key
+    Note right of HSM: RSA unwrap INSIDE HSM
+    HSM-->>Bob: Plaintext DEK
+    Bob->>Bob: Decrypt Ciphertext with DEK (AES-GCM)
+    end
+        </div>
+    </div>
+
+    <h3>Hybrid Encryption (RSA + AES)</h3>
+
+    <div class="box warning">
+        <strong>RSA-4096 can only encrypt ~446 bytes.</strong> AltaStata uses hybrid encryption:
+        <ol>
+            <li>Generate random DEK (AES-256 key)</li>
+            <li>Encrypt metadata JSON with AES-GCM using DEK</li>
+            <li>Wrap DEK with RSA public key</li>
+        </ol>
+        <p>Storage format: <code>[AES-encrypted-metadata] + [IV] + [RSA-wrapped-DEK]</code></p>
+    </div>
+
+    <h3>HSM Cipher Operations</h3>
+
+    <table>
+        <tr>
+            <th>Operation</th>
+            <th>Method</th>
+            <th>Where</th>
+        </tr>
+        <tr>
+            <td><strong>Wrap DEK</strong></td>
+            <td><code>cipher.wrap(dek)</code></td>
+            <td>Client-side (public key)</td>
+        </tr>
+        <tr>
+            <td><strong>Unwrap DEK</strong></td>
+            <td><code>cipher.unwrap(wrappedDek)</code></td>
+            <td>Inside HSM (private key)</td>
+        </tr>
+        <tr>
+            <td><strong>Encrypt metadata</strong></td>
+            <td>AES-GCM</td>
+            <td>Client-side with DEK</td>
+        </tr>
+        <tr>
+            <td><strong>Decrypt metadata</strong></td>
+            <td>AES-GCM</td>
+            <td>Client-side with DEK</td>
+        </tr>
+    </table>
+
+    <h3>HSM Key Rotation</h3>
+
+    <div class="diagram-container">
+        <div class="mermaid">
+sequenceDiagram
+    autonumber
+    participant Bob as Bob
+    participant HSM as HSM (HPCS/CEX)
+    participant PKI as AltaStata PKI
+
+    Note over Bob,PKI: 🔄 KEY ROTATION
+
+    Bob->>HSM: Generate new RSA-4096 key pair (v2)
+    HSM-->>Bob: New Public Key (v2)
+    Note right of HSM: v1 still available for old data
+    Bob->>PKI: Publish new Public Key (v2)
+    Note over PKI: New encryptions use v2
+    Note over HSM: Old data still decryptable with v1
+        </div>
+    </div>
+
+    <hr>
+
+    <h2>📊 Comparison</h2>
+
+    <table>
+        <tr>
+            <th>Aspect</th>
+            <th>HPVS (Secure Enclave)</th>
+            <th>HSM (HPCS/CEX)</th>
+        </tr>
+        <tr>
+            <td><strong>Key Location</strong></td>
+            <td>Encrypted memory</td>
+            <td>HSM hardware</td>
+        </tr>
+        <tr>
+            <td><strong>Protection</strong></td>
+            <td>Confidential Computing</td>
+            <td>Hardware Security Module</td>
+        </tr>
+        <tr>
+            <td><strong>FIPS 140-2 L4</strong></td>
+            <td>❌ No</td>
+            <td>✅ Yes</td>
+        </tr>
+        <tr>
+            <td><strong>IBM Access</strong></td>
+            <td>❌ Cannot access</td>
+            <td>❌ Cannot access (key in HSM)</td>
+        </tr>
+        <tr>
+            <td><strong>Multiple Servers</strong></td>
+            <td>✅ Deploy same key to each HPVS</td>
+            <td>✅ All servers call same HPCS</td>
+        </tr>
+        <tr>
+            <td><strong>Latency</strong></td>
+            <td>~1-5ms (local)</td>
+            <td>HPCS: 10-50ms, CEX: 0.5-2ms</td>
+        </tr>
+        <tr>
+            <td><strong>Cost</strong></td>
+            <td>HPVS VM cost</td>
+            <td>HSM service cost</td>
+        </tr>
+    </table>
+
+    <h3>When to Use Which</h3>
+
+    <table>
+        <tr>
+            <th>Use Case</th>
+            <th>Recommended</th>
+        </tr>
+        <tr>
+            <td>Simple, no FIPS required</td>
+            <td><strong>HPVS</strong></td>
+        </tr>
+        <tr>
+            <td>FIPS 140-2 Level 4 required</td>
+            <td><strong>HSM (HPCS or CEX)</strong></td>
+        </tr>
+        <tr>
+            <td>Speed priority (single node)</td>
+            <td><strong>CEX</strong></td>
+        </tr>
+        <tr>
+            <td>Multiple servers need same key</td>
+            <td><strong>HPCS</strong> (shared via API) or <strong>HPVS</strong> (deploy same key to each)</td>
+        </tr>
+    </table>
+
+    <h2>Terminology</h2>
+
+    <table>
+        <tr>
+            <th>Term</th>
+            <th>Description</th>
+        </tr>
+        <tr>
+            <td><strong>HPVS</strong></td>
+            <td>Hyper Protect Virtual Server - Confidential Computing VM</td>
+        </tr>
+        <tr>
+            <td><strong>HPCS</strong></td>
+            <td>Hyper Protect Crypto Services - Cloud HSM</td>
+        </tr>
+        <tr>
+            <td><strong>CEX</strong></td>
+            <td>Crypto Express - On-prem HSM card</td>
+        </tr>
+        <tr>
+            <td><strong>HSM-Generated</strong></td>
+            <td>Key pair created inside HSM, private key never leaves</td>
+        </tr>
+        <tr>
+            <td><strong>PKI</strong></td>
+            <td>Public Key Infrastructure - Key distribution</td>
+        </tr>
+        <tr>
+            <td><strong>DEK</strong></td>
+            <td>Data Encryption Key - Per-file AES-256 key</td>
+        </tr>
+    </table>
+
+    <hr>
+    <p style="text-align: center; color: #666;">
+        <em>Document prepared for AltaStata IBM Integration discussions. November 2024</em>
+    </p>
+
+    <script>
+        mermaid.initialize({ 
+            startOnLoad: true,
+            theme: 'default',
+            securityLevel: 'loose',
+            sequence: {
+                diagramMarginX: 20,
+                diagramMarginY: 20,
+                actorMargin: 80,
+                width: 180,
+                height: 50,
+                boxMargin: 10,
+                boxTextMargin: 5,
+                noteMargin: 10,
+                messageMargin: 35
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,52 @@
+# grep11client.yaml - IBM HPCS PKCS#11 Configuration
+#
+# Copy this file to /etc/ep11client/grep11client.yaml
+# Replace all <PLACEHOLDER> values with your actual HPCS instance details
+#
+# - API Key: set in users.2.iamauth.apikey (do not commit real keys)
+# - Instance endpoint: ep11.<region>.hs-crypto.cloud.ibm.com
+
+iamcredentialtemplate: &defaultiamcredential
+  enabled: true
+  endpoint: "https://iam.cloud.ibm.com"
+  instance: "<your-instance-id>"
+
+tokens:
+  0:
+    grep11connection:
+      address: ep11.<region>.hs-crypto.cloud.ibm.com
+      port: 443
+      tls:
+        enabled: true
+        cacert:        # leave empty to use system default
+    storage:
+      remotestore:
+        enabled: true
+    users:
+      0: # SO User
+        name: "admin"
+        iamauth: *defaultiamcredential
+      
+      1: # User
+        name: "admin"
+        tokenspaceID: aaabbbcc-XXXXX  # <-- UPDATE with your tokenspaceID
+        keystorePassword: # Authenticated key store password
+        iamauth: *defaultiamcredential
+        sessionauth:
+          enabled: false
+          tokenspaceIDPassword: # Authenticated key store password
+      
+      2: # Anonymous user (bob123 will use this)
+        name: "Anonymous"
+        tokenspaceID: aaabbbcc-EEEEEE  # <-- UPDATE with Anonymous tokenspaceID
+        keystorePassword: # Authenticated key store password
+        iamauth:
+          <<: *defaultiamcredential
+          apikey: <your-api-key>
+        sessionauth:
+          enabled: false
+          tokenspaceIDPassword: # Authenticated key store password
+
+logging:
+  loglevel: trace
+  logpath: /tmp/grep11-pkcs11.log

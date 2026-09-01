@@ -1,0 +1,35 @@
+// Shared build settings for all modules.
+// On Windows, javac defaults to the platform charset (e.g. windows-1252);
+// source files are UTF-8, so encoding must be set explicitly.
+
+subprojects {
+    tasks.withType(JavaCompile).configureEach {
+        options.encoding = 'UTF-8'
+    }
+    tasks.withType(Javadoc).configureEach {
+        options.encoding = 'UTF-8'
+    }
+    pluginManager.withPlugin('scala') {
+        tasks.withType(ScalaCompile).configureEach {
+            options.encoding = 'UTF-8'
+        }
+    }
+
+    // Force patched transitive versions across modules (OSV / GHSA).
+    // Do not touch netty-tcnative-* (different version line, e.g. 2.0.x).
+    configurations.configureEach {
+        resolutionStrategy.eachDependency { details ->
+            if (details.requested.group == 'io.netty'
+                    && details.requested.name.startsWith('netty-')
+                    && !details.requested.name.contains('tcnative')) {
+                details.useVersion '4.1.135.Final'
+                details.because 'Netty CVE fixes (HTTP/2 / SNI / trust-manager)'
+            }
+            if (details.requested.group == 'com.fasterxml.jackson.core'
+                    && details.requested.name == 'jackson-databind') {
+                details.useVersion '2.18.8'
+                details.because 'jackson-databind GHSA fixes'
+            }
+        }
+    }
+}

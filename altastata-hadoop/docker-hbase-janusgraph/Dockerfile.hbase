@@ -1,0 +1,20 @@
+FROM eclipse-temurin:8-jdk-focal
+
+# Install wget and bash
+RUN apt-get update && apt-get install -y wget bash && rm -rf /var/lib/apt/lists/*
+
+# Download and extract HBase 2.5.8 (compatible with Hadoop 3)
+ENV HBASE_VERSION=2.5.8
+ENV HBASE_HOME=/opt/hbase
+RUN wget -q -O - https://archive.apache.org/dist/hbase/${HBASE_VERSION}/hbase-${HBASE_VERSION}-hadoop3-bin.tar.gz | tar -xzf - -C /opt && \
+    mv /opt/hbase-${HBASE_VERSION}-hadoop3 ${HBASE_HOME}
+
+# Copy AltaStata and signed Bouncy Castle JARs into HBase lib
+COPY altastata-hadoop-*-uber.jar ${HBASE_HOME}/lib/
+COPY bc*-jdk18on-*.jar ${HBASE_HOME}/lib/
+
+# Copy configuration
+COPY config/hbase-site.xml ${HBASE_HOME}/conf/
+
+# Start HBase in standalone mode (starts ZK, Master, and RegionServer in one JVM)
+CMD ["/opt/hbase/bin/hbase", "master", "start"]

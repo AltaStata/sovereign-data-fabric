@@ -1,0 +1,51 @@
+services:
+  hbase:
+    build: 
+      context: .
+      dockerfile: Dockerfile.hbase
+    image: janusgraph-hbase:latest
+    container_name: hbase
+    hostname: hbase
+    ports:
+      - "2181:2181"   # Zookeeper
+      - "16000:16000" # Master
+      - "16010:16010" # Master Web UI
+      - "16020:16020" # RegionServer
+      - "16030:16030" # RegionServer Web UI
+      - "8182:8182"   # JanusGraph
+    volumes:
+      # Your AltaStata account directory. Set ALTASTATA_ACCOUNT_DIR in .env
+      # (copy .env.example) — there is no default, so nobody mounts someone
+      # else's account by accident.
+      - ${ALTASTATA_ACCOUNT_DIR:?set ALTASTATA_ACCOUNT_DIR in .env, see .env.example}:/root/.altastata/admin:ro
+      - ./config/hbase-site.xml:/opt/hbase/conf/hbase-site.xml:ro
+      # Keep local WALs across recreate so the same AltaStata rootdir can come back up
+      - ./data/hbase-wals:/tmp/hbase-wals
+    environment:
+      # hbase-site.xml reads this as ${env.ALTASTATA_PASSWORD}; never commit it
+      - ALTASTATA_PASSWORD=${ALTASTATA_PASSWORD:?set ALTASTATA_PASSWORD in .env, see .env.example}
+      # Each stack generation needs its own AltaStata rootdir unless you are
+      # deliberately reopening existing data (see README "Restarting").
+      - HBASE_ROOTDIR=${HBASE_ROOTDIR:-altastata:///hbase_janusgraph}
+      # Tell AltaStata where the config is
+      - ALTASTATA_ACCOUNT_HOME=/root/.altastata/admin
+
+  janusgraph:
+    image: janusgraph/janusgraph:1.0.0
+    container_name: janusgraph
+    network_mode: "service:hbase"
+    depends_on:
+      - hbase
+    environment:
+      # Official image ships conf/jvm-11.options with -Xms4096m -Xmx4096m and
+      # AlwaysPreTouch. That RSS (~4.6 GiB) plus HBase plus an in-container
+      # gremlin.sh console exceeds a typical Docker Desktop VM (~8 GiB) and
+      # the kernel OOM-kills this container (exit 137). Last -Xmx on the
+      # java command line wins, so this overrides the 4g defaults.
+      - JAVA_OPTIONS=-Xms512m -Xmx1536m
+    volumes:
+      - ./config/janusgraph-hbase.properties:/opt/janusgraph/conf/janusgraph-hbase.properties:ro
+      - ./config/janusgraph-hbase-batch.properties:/opt/janusgraph/conf/janusgraph-hbase-batch.properties:ro
+      - ./config/janusgraph-server.yaml:/opt/janusgraph/conf/janusgraph-server.yaml:ro
+      - ./entrypoint-janusgraph.sh:/entrypoint-janusgraph.sh:ro
+    entrypoint: ["/bin/bash", "/entrypoint-janusgraph.sh"]

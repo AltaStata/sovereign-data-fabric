@@ -1,0 +1,103 @@
+// TODO: https://studiofreya.com/2016/03/20/how-to-obfuscate-a-package-with-gradle-maven-and-proguard/
+
+plugins {
+    id 'scala'
+    id 'java'
+    id 'org.openjfx.javafxplugin'version '0.0.14'
+    id 'application'
+    id 'org.beryx.jlink' version '2.24.0'
+    id 'org.gradlex.java-module-dependencies' version '1.7.1'
+}
+
+application {
+    mainClassName = "com.altastata.ui.AltaStataApp"
+}
+
+javafx {
+    version = '17'
+    modules = [ 'javafx.controls', 'javafx.web', 'javafx.graphics', 'javafx.media']
+}
+
+dependencies {
+    implementation(project(':altastata-core')) {
+        exclude group: 'com.twitter'
+        exclude group: 'io.grpc'
+    }
+
+    implementation 'io.projectreactor.tools:blockhound:1.0.9.RELEASE'
+
+    //implementation 'com.fasterxml.jackson.core:jackson-databind:2.14.2'  // Add the correct Jackson version
+    //implementation 'com.fasterxml.jackson.datatype:jackson-datatype-joda:2.14.2'  // Joda module for Jackson
+
+    // https://mvnrepository.com/artifact/org.apache.tika/tika-core
+    implementation "org.apache.tika:tika-core:1.10"
+
+// TODO: Open to run scala script within Java
+//	compile "org.scala-lang:scala-compiler:2.11.11"
+//	compile "org.scala-lang:scala-reflect:2.11.11"
+}
+
+sourceSets {
+    main {
+        java {
+            include 'com/altastata/ui/**'
+            exclude 'com/altastata/ui/mediaplayer/**'
+        }
+    }
+    // close to run test files
+    test {
+        java {
+            exclude '**'
+        }
+    }
+}
+
+repositories {
+    mavenLocal()
+    mavenCentral()
+    maven { url "https://oss.sonatype.org/content/repositories/snapshots/" }
+}
+
+jlink {
+    options = ['--strip-debug',
+               '--compress', '2',
+               '--no-header-files',
+               '--no-man-pages'
+    ]
+
+    launcher {
+        name = 'AltaStataApp'
+    }
+
+    jpackage {
+        appVersion = '1.0.0'
+        imageName = 'AltaStataApp'
+        //icon = 'src/main/resources/myapp.icns'  // Use .icns icon for macOS
+
+        // Set platform-specific properties
+        if (org.gradle.internal.os.OperatingSystem.current().isWindows()) {
+            installerType = 'exe'  // Windows-specific installer type
+            winMenu = true
+            winShortcut = true
+            winDirChooser = true
+            winMenuGroup = 'AltaStataApp'
+        } else if (org.gradle.internal.os.OperatingSystem.current().isMacOsX()) {
+            installerType = 'dmg'  // For macOS. Change to 'exe' for Windows or 'deb/rpm' for Linux
+
+            // macOS-specific options passed via installerOptions
+            installerOptions = [
+                    '--mac-package-identifier', 'com.altastata.ui.AltaStataApp',
+                    '--mac-package-name', 'AltaStataApp'
+            ]
+        } else if (org.gradle.internal.os.OperatingSystem.current().isLinux()) {
+            installerType = 'deb'  // or 'rpm' depending on your Linux distro
+            linuxShortcut = true
+            linuxMenuGroup = 'AltaStataApp'
+            linuxAppRelease = '1'
+            linuxAppCategory = 'Utility'
+        }
+    }
+
+    // Provide the module name for jlink
+    moduleName = 'altastata.ui'
+}

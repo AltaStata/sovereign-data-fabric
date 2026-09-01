@@ -1,0 +1,16 @@
+module altastata.ui {
+    requires javafx.controls;
+    requires javafx.media;
+    requires javafx.web;
+    requires java.desktop;
+
+    requires altastata.core;
+
+    requires scala.library;
+    requires org.apache.commons.io;
+    requires org.slf4j;
+    requires org.apache.commons.lang3;
+    requires org.apache.tika.core;
+
+    exports com.altastata.ui;
+}

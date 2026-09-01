@@ -1,0 +1,70 @@
+package com.altastata.play
+
+import play.core.server._
+import play.api.routing.sird._
+import play.api.mvc._
+import java.io.File
+import javax.inject.Inject
+import play.api.http.HeaderNames._;
+import java.io.FileInputStream
+import java.io.InputStream
+import com.altastata.utils.Account
+import scala.collection.JavaConverters._ 
+import com.altastata.filesystem.securecloud.SecureCloudStream
+import scala.concurrent.ExecutionContext.Implicits.global
+import java.util.Properties
+import com.altastata.filesystem.securecloud.SecureCloudStream.AltaStataChunkedInputStream
+import com.altastata.utils.Constants
+
+case class PlayServer(port: Int) {
+     
+  val server = NettyServer.fromRouter(ServerConfig(
+          port = Some(port),
+          address = "127.0.0.1")) {
+          case GET(p"/$path*") => streamMedia(path)
+        }
+  
+  def streamMedia(path: String) = Action { implicit request =>
+    
+    println(s"PlayServer GET: $path")
+
+    // For UNIX FS
+//    val filePath = "/Users/se23692/Desktop/media/" + s"$path"
+//    val inputStream = new FileInputStream(filePath)
+//    val size = new File(filePath).length()
+      
+    // For Secure Cloud FS
+    val filePath = s"$path"
+    val inputStream = new AltaStataChunkedInputStream(filePath, 0, Constants.CHUNKS_BLOCK_FOR_INPUT_STREAM)
+      
+    /**
+     * TODO: check the files that are larger than Int.MAX, they may not work
+     */
+    val size = inputStream.available()
+      
+    val contentType = if (filePath.endsWith(".mp4")) Some("video/mp4") 
+                      else if (filePath.endsWith(".mp3")) Some("audio/mpeg")
+                      else if (filePath.endsWith(".wav")) Some("audio/x-wav")
+                      else None
+      
+    RangeResult.ofStream(size, inputStream, request.headers.get(RANGE), filePath, contentType)
+  }
+}
+
+object PlayTest extends App {
+
+  Account account = new Account();
+
+	account.loadAccountProperties(account.ALTASTATA_ACCOUNTS_HOME() + File.separator + "amazon.rsa.bob123", true)
+
+	val console = System.console
+  if (console == null) {
+    Account.setPassword(args(0).toCharArray)
+  }
+  else {
+    val passwordArray = console.readPassword("Enter your secret password: ")
+    Account.setPassword(passwordArray)
+  }
+  
+  PlayServer(19000)
+}

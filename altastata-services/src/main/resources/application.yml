@@ -1,0 +1,82 @@
+micronaut:
+  application:
+    name: altastata-services
+  server:
+    # S3-compatible REST API port. Only used when
+    # altastata.services.s3gateway.enabled=true; otherwise S3Controller is
+    # not registered and Micronaut HTTP runs without S3 routes. Credentials
+    # come from the co-hosted gRPC service (LoginV2 → IssueCredentials) on
+    # :9877. There are no HTTP admin bootstrap routes.
+    port: 9876
+    host: 0.0.0.0
+    # S3 multipart uploads are large; keep the inherited s3-gateway limits.
+    max-request-size: 6GB
+    multipart:
+      max-file-size: 6GB
+      threshold: 1MB
+    netty:
+      max-header-size: 16KB
+    cors:
+      enabled: true
+      configurations:
+        web:
+          allowed-origins:
+            - "*"
+          allowed-methods:
+            - GET
+            - POST
+            - PUT
+            - DELETE
+            - HEAD
+            - OPTIONS
+          allowed-headers:
+            - "*"
+          max-age: 3600
+
+# Per-service feature gates. Toggle from the system properties / env vars at
+# launch time; see AltaStataServicesApplication for the deployment matrix.
+altastata:
+  services:
+    grpc:
+      enabled: ${ALTASTATA_SERVICES_GRPC_ENABLED:true}
+    s3gateway:
+      enabled: ${ALTASTATA_SERVICES_S3GATEWAY_ENABLED:false}
+    py4j:
+      enabled: ${ALTASTATA_SERVICES_PY4J_ENABLED:true}
+    mcp:
+      # Off by default. Use --mcp-stdio on the uber jar for Claude Desktop / Cursor,
+      # or set ALTASTATA_SERVICES_MCP_ENABLED=true when co-hosting with gRPC.
+      enabled: ${ALTASTATA_SERVICES_MCP_ENABLED:false}
+  # MCP policy + account binding (see altastata-mcp/README.md).
+  mcp:
+    account-dir: ${ALTASTATA_MCP_ACCOUNT_DIR:}
+    password: ${ALTASTATA_MCP_PASSWORD:}
+    transport: ${ALTASTATA_MCP_TRANSPORT:stdio}
+    max-read-bytes: ${ALTASTATA_MCP_MAX_READ_BYTES:50000000}
+
+# altastata-grpc settings — only honoured when grpc gate is on.
+grpcgateway:
+  port: 9877
+  # Defaults to loopback. Override with ALTASTATA_GRPC_BIND_ADDRESS=0.0.0.0
+  # only when the gateway intentionally serves remote clients (TLS auto-
+  # enables on non-loopback binds via Phase A — see altastata-grpc/TLS_DESIGN.md §4).
+  bind-address: ${ALTASTATA_GRPC_BIND_ADDRESS:127.0.0.1}
+  # Must be >= largest unary gRPC request payload; independent from gRPC message limit.
+  max-request-length-bytes: 134217728
+  # Optional path to the AltaStata Console SPA bundle. When set and the
+  # directory contains an index.html, the UI is served from the same port
+  # as the gRPC gateway. Falls back to ALTASTATA_WEB_UI_DIR env var; if
+  # neither is set, only gRPC is served.
+  # web-ui-dir: ""
+
+# altastata-s3-gateway settings — only honoured when s3gateway gate is on.
+s3gateway:
+  defaultRegion: "us-east-1"
+  ownerId: "altastata-user"
+  ownerDisplayName: "AltaStata User"
+  defaultMaxKeys: 300
+  defaultBucketCreationDate: "2023-01-01T00:00:00.000Z"
+
+logger:
+  levels:
+    com.altastata: INFO
